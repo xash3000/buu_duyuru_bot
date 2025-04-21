@@ -96,7 +96,7 @@ public class ScraperService
             var dateText = dateNode.InnerText.Trim();
             if (!DateTime.TryParseExact(dateText, "dd.MM.yyyy", CultureInfo.GetCultureInfo("tr-TR"), DateTimeStyles.None, out var addedDate))
                 addedDate = DateTime.Now;
-            list.Add(new Announcement { Department = departmentName, Link = link, Title = title, AddedDate = addedDate });
+            list.Add(new Announcement { Department = departmentName, DepartmentShortName = departmentShortName, Link = link, Title = title, AddedDate = addedDate });
         }
         return list;
     }

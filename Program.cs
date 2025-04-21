@@ -172,7 +172,7 @@ Task HandleErrorAsync(ITelegramBotClient bot, Exception ex, CancellationToken to
 
 async Task PeriodicFetchAndSendAsync(ITelegramBotClient bot, CancellationToken token)
 {
-  var timer = new PeriodicTimer(TimeSpan.FromMinutes(5));
+  var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
   try
   {
     while (await timer.WaitForNextTickAsync(token))
@@ -192,12 +192,14 @@ async Task FetchAndSendAsync(ITelegramBotClient bot, CancellationToken token)
     if (!await dbService.AnnouncementExistsAsync(ann.Link))
     {
       Console.WriteLine($"[Periodic] Sending announcement: {ann.Link}");
-      await dbService.InsertAnnouncementAsync(ann.Department, ann.Link, ann.Title, ann.AddedDate);
-      var subs = await dbService.GetSubscribersAsync(ann.Department);
+      await dbService.InsertAnnouncementAsync(ann.Department, ann.DepartmentShortName, ann.Link, ann.Title, ann.AddedDate);
+      var subs = await dbService.GetSubscribersAsync(ann.DepartmentShortName);
       foreach (var chatId in subs)
+      {
         await bot.SendMessage(chatId,
             $"Duyuru\nKimden: {ann.Department}\nTarih: {ann.AddedDate:dd.MM.yyyy}\n\n{ann.Title}\n\n{ann.Link}",
             cancellationToken: token);
+      }
     }
   }
 }

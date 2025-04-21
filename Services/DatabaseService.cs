@@ -17,7 +17,7 @@ public class DatabaseService
         cmd.CommandText = @"
             CREATE TABLE IF NOT EXISTS Departments (Name TEXT PRIMARY KEY, ShortName TEXT UNIQUE, Url TEXT, InsId INTEGER);
             CREATE TABLE IF NOT EXISTS Subscriptions (ChatId TEXT, Department TEXT, Username TEXT, PRIMARY KEY(ChatId, Department));
-            CREATE TABLE IF NOT EXISTS Announcements (Id INTEGER PRIMARY KEY AUTOINCREMENT, Department TEXT, Link TEXT UNIQUE, Title TEXT, AddedDate DATETIME);
+            CREATE TABLE IF NOT EXISTS Announcements (Id INTEGER PRIMARY KEY AUTOINCREMENT, Department TEXT, DepartmentShortName TEXT, Link TEXT UNIQUE, Title TEXT, AddedDate DATETIME);
         ";
         cmd.ExecuteNonQuery();
     }
@@ -106,12 +106,12 @@ public class DatabaseService
         return list;
     }
 
-    public async Task<List<long>> GetSubscribersAsync(string dept)
+    public async Task<List<long>> GetSubscribersAsync(string deptShort)
     {
         using var conn = new SqliteConnection($"Data Source={DbPath}"); await conn.OpenAsync();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT ChatId FROM Subscriptions WHERE Department=@dept;";
-        cmd.Parameters.AddWithValue("@dept", dept);
+        cmd.CommandText = "SELECT ChatId FROM Subscriptions WHERE Department=@deptShort;";
+        cmd.Parameters.AddWithValue("@deptShort", deptShort);
         var list = new List<long>();
         using var rdr = await cmd.ExecuteReaderAsync();
         while (await rdr.ReadAsync())
@@ -132,24 +132,26 @@ public class DatabaseService
         return count > 0;
     }
 
-    public async Task InsertAnnouncementAsync(string dept, string link, string title)
+    public async Task InsertAnnouncementAsync(string dept, string deptShort, string link, string title)
     {
         using var conn = new SqliteConnection($"Data Source={DbPath}"); await conn.OpenAsync();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO Announcements (Department, Link, Title, AddedDate) VALUES (@dept, @link, @title, @addedDate);";
+        cmd.CommandText = "INSERT INTO Announcements (Department, DepartmentShortName, Link, Title, AddedDate) VALUES (@dept, @deptShort, @link, @title, @addedDate);";
         cmd.Parameters.AddWithValue("@dept", dept);
+        cmd.Parameters.AddWithValue("@deptShort", deptShort);
         cmd.Parameters.AddWithValue("@link", link);
         cmd.Parameters.AddWithValue("@title", title);
         cmd.Parameters.AddWithValue("@addedDate", DateTime.Now);
         await cmd.ExecuteNonQueryAsync();
     }
 
-    public async Task InsertAnnouncementAsync(string dept, string link, string title, DateTime addedDate)
+    public async Task InsertAnnouncementAsync(string dept, string deptShort, string link, string title, DateTime addedDate)
     {
         using var conn = new SqliteConnection($"Data Source={DbPath}"); await conn.OpenAsync();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO Announcements (Department, Link, Title, AddedDate) VALUES (@dept, @link, @title, @addedDate);";
+        cmd.CommandText = "INSERT INTO Announcements (Department, DepartmentShortName, Link, Title, AddedDate) VALUES (@dept, @deptShort, @link, @title, @addedDate);";
         cmd.Parameters.AddWithValue("@dept", dept);
+        cmd.Parameters.AddWithValue("@deptShort", deptShort);
         cmd.Parameters.AddWithValue("@link", link);
         cmd.Parameters.AddWithValue("@title", title);
         cmd.Parameters.AddWithValue("@addedDate", addedDate);
