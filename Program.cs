@@ -9,6 +9,7 @@ using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Services;
 using Models;
+using System.Diagnostics.Eventing.Reader;
 #pragma warning disable CS0618 // Suppress obsolete SendTextMessageAsync warnings
 
 var dbService = new DatabaseService();
@@ -109,8 +110,8 @@ async Task HandleListAsync(ITelegramBotClient bot, Message message, Cancellation
 // Subscribe using only department and Telegram username
 async Task HandleSubscribeAsync(ITelegramBotClient bot, Message message, CancellationToken token)
 {
-  var parts = message.Text.Trim().Split(' ', 2, StringSplitOptions.TrimEntries);
-  if (parts.Length == 2)
+  var parts = message.Text?.Trim().Split(' ', 2, StringSplitOptions.TrimEntries);
+  if (parts?.Length == 2)
   {
     var dept = parts[1].ToLower();
     var userName = message.From?.Username ?? message.From?.FirstName;
@@ -172,7 +173,7 @@ Task HandleErrorAsync(ITelegramBotClient bot, Exception ex, CancellationToken to
 
 async Task PeriodicFetchAndSendAsync(ITelegramBotClient bot, CancellationToken token)
 {
-  var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+  var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
   try
   {
     while (await timer.WaitForNextTickAsync(token))
@@ -196,9 +197,23 @@ async Task FetchAndSendAsync(ITelegramBotClient bot, CancellationToken token)
       var subs = await dbService.GetSubscribersAsync(ann.DepartmentShortName);
       foreach (var chatId in subs)
       {
-        await bot.SendMessage(chatId,
-            $"Duyuru\nKimden: {ann.Department}\nTarih: {ann.AddedDate:dd.MM.yyyy}\n\n{ann.Title}\n\n{ann.Link}",
-            cancellationToken: token);
+        await bot.SendMessage(
+            chatId: chatId,
+            text:
+                "📢 Duyuru\n\n" +
+                $"👤 Kimden: {ann.Department}  \n" +
+                $"📅 Tarih: {ann.AddedDate:dd.MM.yyyy}  \n\n" +
+                "🗒 Konu:  \n" +
+                $"> {ann.Title}\n\n" +
+                $"🔗 {ann.Link}",
+            linkPreviewOptions: new LinkPreviewOptions
+            {
+              IsDisabled = true
+            },
+            parseMode: ParseMode.Markdown,
+            cancellationToken: token
+        );
+
       }
     }
   }

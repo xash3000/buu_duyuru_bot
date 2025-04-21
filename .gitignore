@@ -69,3 +69,7 @@ ApplicationInsights.config.install.xdt
 # Resharper files
 _ReSharper*/
 *.DotSettings
+
+# sqlite
+*.db
+buu_duyuru_bot.db
