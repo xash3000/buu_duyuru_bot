@@ -9,6 +9,9 @@ public class DatabaseService
 {
     private const string DbPath = "buu_duyuru_bot.db";
 
+    /// <summary>
+    /// Initializes the database by creating necessary tables if they don't exist.
+    /// </summary>
     public void InitializeDatabase()
     {
         using var conn = new SqliteConnection($"Data Source={DbPath}");
@@ -29,6 +32,11 @@ public class DatabaseService
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>
+    /// Adds a department to the database asynchronously.
+    /// </summary>
+    /// <param name="dep">The department to add</param>
+    /// <returns>True if the department was added, false if it already exists</returns>
     public async Task<bool> AddDepartmentAsync(Department dep)
     {
         using var conn = new SqliteConnection($"Data Source={DbPath}");
@@ -44,6 +52,10 @@ public class DatabaseService
         return await cmd.ExecuteNonQueryAsync() > 0;
     }
 
+    /// <summary>
+    /// Gets all departments from the database asynchronously.
+    /// </summary>
+    /// <returns>A list of all departments</returns>
     public async Task<List<Department>> GetDepartmentsAsync()
     {
         using var conn = new SqliteConnection($"Data Source={DbPath}");
@@ -65,6 +77,13 @@ public class DatabaseService
         return list;
     }
 
+    /// <summary>
+    /// Adds a user to the database asynchronously.
+    /// </summary>
+    /// <param name="chatId">The chat ID of the user</param>
+    /// <param name="username">The username of the user</param>
+    /// <param name="fullName">The full name of the user</param>
+    /// <returns>True if the user was added, false if it already exists</returns>
     public async Task<bool> AddUserAsync(
         long chatId,
         string? username,
@@ -82,6 +101,14 @@ public class DatabaseService
         return await cmd.ExecuteNonQueryAsync() > 0;
     }
 
+    /// <summary>
+    /// Adds a subscription for a user to a department asynchronously.
+    /// </summary>
+    /// <param name="chatId">The chat ID of the user</param>
+    /// <param name="insId">The institution ID of the department</param>
+    /// <param name="username">The username of the user</param>
+    /// <param name="fullName">The full name of the user</param>
+    /// <returns>True if the subscription was added, false if it already exists</returns>
     public async Task<bool> AddSubscriptionAsync(
         long chatId,
         int insId,
@@ -100,6 +127,12 @@ public class DatabaseService
         return await cmd.ExecuteNonQueryAsync() > 0;
     }
 
+    /// <summary>
+    /// Removes a subscription for a user to a department asynchronously.
+    /// </summary>
+    /// <param name="chatId">The chat ID of the user</param>
+    /// <param name="insId">The institution ID of the department</param>
+    /// <returns>True if the subscription was removed, false if it didn't exist</returns>
     public async Task<bool> RemoveSubscriptionAsync(long chatId, int insId)
     {
         using var conn = new SqliteConnection($"Data Source={DbPath}");
@@ -112,6 +145,11 @@ public class DatabaseService
         return await cmd.ExecuteNonQueryAsync() > 0;
     }
 
+    /// <summary>
+    /// Gets the shortnames of subscribed departments for a user asynchronously.
+    /// </summary>
+    /// <param name="chatId">The chat ID of the user</param>
+    /// <returns>A list of department shortnames the user is subscribed to</returns>
     public async Task<List<string>> GetUserSubscriptionsAsync(long chatId)
     {
         using var conn = new SqliteConnection($"Data Source={DbPath}");
@@ -128,6 +166,11 @@ public class DatabaseService
         return list;
     }
 
+    /// <summary>
+    /// Gets subscription objects for a user asynchronously.
+    /// </summary>
+    /// <param name="chatId">The chat ID of the user</param>
+    /// <returns>A list of subscription objects for the user</returns>
     public async Task<List<Subscription>> GetSubscriptionsAsync(long chatId)
     {
         using var conn = new SqliteConnection($"Data Source={DbPath}");
@@ -148,6 +191,11 @@ public class DatabaseService
         return list;
     }
 
+    /// <summary>
+    /// Gets the chat IDs of all subscribers to a department asynchronously.
+    /// </summary>
+    /// <param name="insId">The institution ID of the department</param>
+    /// <returns>A list of chat IDs subscribed to the department</returns>
     public async Task<List<long>> GetSubscribersAsync(int insId)
     {
         using var conn = new SqliteConnection($"Data Source={DbPath}");
@@ -162,6 +210,11 @@ public class DatabaseService
         return list;
     }
 
+    /// <summary>
+    /// Checks if an announcement already exists in the database asynchronously.
+    /// </summary>
+    /// <param name="link">The link of the announcement</param>
+    /// <returns>True if the announcement exists, false otherwise</returns>
     public async Task<bool> AnnouncementExistsAsync(string link)
     {
         using var conn = new SqliteConnection($"Data Source={DbPath}");
@@ -174,11 +227,24 @@ public class DatabaseService
         return count > 0;
     }
 
+    /// <summary>
+    /// Inserts an announcement into the database with the current date and time asynchronously.
+    /// </summary>
+    /// <param name="insId">The institution ID of the department</param>
+    /// <param name="link">The link of the announcement</param>
+    /// <param name="title">The title of the announcement</param>
     public async Task InsertAnnouncementAsync(int insId, string link, string title)
     {
         await InsertAnnouncementAsync(insId, link, title, DateTime.Now);
     }
 
+    /// <summary>
+    /// Inserts an announcement into the database with a specific date and time asynchronously.
+    /// </summary>
+    /// <param name="insId">The institution ID of the department</param>
+    /// <param name="link">The link of the announcement</param>
+    /// <param name="title">The title of the announcement</param>
+    /// <param name="addedDate">The date and time the announcement was added</param>
     public async Task InsertAnnouncementAsync(
         int insId,
         string link,

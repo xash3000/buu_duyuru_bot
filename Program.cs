@@ -54,6 +54,12 @@ Console.ReadLine();
 cts.Cancel();
 #endif
 
+/// <summary>
+/// Handles incoming updates from the Telegram Bot API asynchronously.
+/// </summary>
+/// <param name="bot">The Telegram Bot client instance</param>
+/// <param name="update">The update received from Telegram</param>
+/// <param name="token">Cancellation token for the async operation</param>
 async Task HandleUpdateAsync(ITelegramBotClient bot, Update update, CancellationToken token)
 {
   Console.WriteLine($"[Debug] Received update of type: {update.Type}");
@@ -65,6 +71,13 @@ async Task HandleUpdateAsync(ITelegramBotClient bot, Update update, Cancellation
   }
 }
 
+/// <summary>
+/// Handles text messages received from Telegram users asynchronously.
+/// </summary>
+/// <param name="bot">The Telegram Bot client instance</param>
+/// <param name="message">The message received from Telegram</param>
+/// <param name="messageText">The text content of the message</param>
+/// <param name="token">Cancellation token for the async operation</param>
 async Task HandleTextMessageAsync(ITelegramBotClient bot, Message message, string messageText, CancellationToken token)
 {
   Console.WriteLine($"[Debug] Handling command: {messageText} from chat {message.Chat.Id}");
@@ -84,12 +97,23 @@ async Task HandleTextMessageAsync(ITelegramBotClient bot, Message message, strin
   }
 }
 
-// Command handlers
+/// <summary>
+/// Handles the /start command asynchronously.
+/// </summary>
+/// <param name="bot">The Telegram Bot client instance</param>
+/// <param name="message">The message received from Telegram</param>
+/// <param name="token">Cancellation token for the async operation</param>
 async Task HandleStartAsync(ITelegramBotClient bot, Message message, CancellationToken token)
 {
   await bot.SendMessage(message.Chat.Id, "Welcome! Use /help to see commands.", cancellationToken: token);
 }
 
+/// <summary>
+/// Handles the /help command asynchronously.
+/// </summary>
+/// <param name="bot">The Telegram Bot client instance</param>
+/// <param name="message">The message received from Telegram</param>
+/// <param name="token">Cancellation token for the async operation</param>
 async Task HandleHelpAsync(ITelegramBotClient bot, Message message, CancellationToken token)
 {
   await bot.SendMessage(message.Chat.Id,
@@ -100,12 +124,23 @@ async Task HandleHelpAsync(ITelegramBotClient bot, Message message, Cancellation
       cancellationToken: token);
 }
 
+/// <summary>
+/// Handles the /list command asynchronously.
+/// </summary>
+/// <param name="bot">The Telegram Bot client instance</param>
+/// <param name="message">The message received from Telegram</param>
+/// <param name="token">Cancellation token for the async operation</param>
 async Task HandleListAsync(ITelegramBotClient bot, Message message, CancellationToken token)
 {
   await bot.SendMessage(message.Chat.Id, string.Join(", ", departments.Select(d => d.ShortName)), cancellationToken: token);
 }
 
-// Subscribe using department and Telegram user information
+/// <summary>
+/// Handles the /subscribe command asynchronously.
+/// </summary>
+/// <param name="bot">The Telegram Bot client instance</param>
+/// <param name="message">The message received from Telegram</param>
+/// <param name="token">Cancellation token for the async operation</param>
 async Task HandleSubscribeAsync(ITelegramBotClient bot, Message message, CancellationToken token)
 {
   var parts = message.Text?.Trim().Split(' ', 2, StringSplitOptions.TrimEntries);
@@ -132,6 +167,13 @@ async Task HandleSubscribeAsync(ITelegramBotClient bot, Message message, Cancell
   else await bot.SendMessage(message.Chat.Id, "Usage: /subscribe <dept>", cancellationToken: token);
 }
 
+/// <summary>
+/// Handles the /unsubscribe command asynchronously.
+/// </summary>
+/// <param name="bot">The Telegram Bot client instance</param>
+/// <param name="message">The message received from Telegram</param>
+/// <param name="arg">The department argument to unsubscribe from</param>
+/// <param name="token">Cancellation token for the async operation</param>
 async Task HandleUnsubscribeAsync(ITelegramBotClient bot, Message message, string arg, CancellationToken token)
 {
   if (departments.Any(d => d.ShortName == arg))
@@ -142,23 +184,46 @@ async Task HandleUnsubscribeAsync(ITelegramBotClient bot, Message message, strin
   else await bot.SendMessage(message.Chat.Id, "Unknown department.", cancellationToken: token);
 }
 
+/// <summary>
+/// Handles the /my command asynchronously.
+/// </summary>
+/// <param name="bot">The Telegram Bot client instance</param>
+/// <param name="message">The message received from Telegram</param>
+/// <param name="token">Cancellation token for the async operation</param>
 async Task HandleMyAsync(ITelegramBotClient bot, Message message, CancellationToken token)
 {
   var subs = await dbService.GetUserSubscriptionsAsync(message.Chat.Id);
   await bot.SendMessage(message.Chat.Id, subs.Any() ? string.Join(", ", subs) : "No subscriptions.", cancellationToken: token);
 }
 
+/// <summary>
+/// Handles unknown commands asynchronously.
+/// </summary>
+/// <param name="bot">The Telegram Bot client instance</param>
+/// <param name="message">The message received from Telegram</param>
+/// <param name="token">Cancellation token for the async operation</param>
 async Task HandleUnknownAsync(ITelegramBotClient bot, Message message, CancellationToken token)
 {
   await bot.SendMessage(message.Chat.Id, "Unknown command. Use /help.", cancellationToken: token);
 }
 
+/// <summary>
+/// Handles errors from the Telegram Bot API asynchronously.
+/// </summary>
+/// <param name="bot">The Telegram Bot client instance</param>
+/// <param name="ex">The exception that occurred</param>
+/// <param name="token">Cancellation token for the async operation</param>
 Task HandleErrorAsync(ITelegramBotClient bot, Exception ex, CancellationToken token)
 {
   Console.WriteLine($"Error: {ex.Message}");
   return Task.CompletedTask;
 }
 
+/// <summary>
+/// Periodically fetches announcements and sends them to subscribed users asynchronously.
+/// </summary>
+/// <param name="bot">The Telegram Bot client instance</param>
+/// <param name="token">Cancellation token for the async operation</param>
 async Task PeriodicFetchAndSendAsync(ITelegramBotClient bot, CancellationToken token)
 {
   var timer = new PeriodicTimer(TimeSpan.FromSeconds(20));
@@ -172,6 +237,11 @@ async Task PeriodicFetchAndSendAsync(ITelegramBotClient bot, CancellationToken t
   catch (OperationCanceledException) { }
 }
 
+/// <summary>
+/// Fetches new announcements and sends them to subscribed users asynchronously.
+/// </summary>
+/// <param name="bot">The Telegram Bot client instance</param>
+/// <param name="token">Cancellation token for the async operation</param>
 async Task FetchAndSendAsync(ITelegramBotClient bot, CancellationToken token)
 {
   var announcements = await scraper.FetchAnnouncementsAsync(departments);
@@ -211,7 +281,11 @@ async Task FetchAndSendAsync(ITelegramBotClient bot, CancellationToken token)
   }
 }
 
-// Helper method to get the user's full name from Telegram User object
+/// <summary>
+/// Gets the full name of a Telegram user.
+/// </summary>
+/// <param name="user">The Telegram user</param>
+/// <returns>The full name of the user, or a fallback if unavailable</returns>
 string GetUserFullName(User? user)
 {
   if (user == null) return "Unknown User";

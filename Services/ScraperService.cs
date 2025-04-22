@@ -10,6 +10,11 @@ using System.Net;
 
 public class ScraperService
 {
+    /// <summary>
+    /// Fetches announcements from all departments asynchronously.
+    /// </summary>
+    /// <param name="departments">List of departments to fetch announcements from</param>
+    /// <returns>A list of announcements from all departments</returns>
     public async Task<List<Announcement>> FetchAnnouncementsAsync(
         List<Department> departments)
     {
@@ -31,6 +36,12 @@ public class ScraperService
         return announcements;
     }
 
+    /// <summary>
+    /// Fetches announcements for a specific department asynchronously.
+    /// </summary>
+    /// <param name="httpClient">The HTTP client to use for requests</param>
+    /// <param name="dept">The department to fetch announcements for</param>
+    /// <returns>A list of announcements for the specified department</returns>
     private async Task<List<Announcement>> FetchAnnouncementsForDepartmentAsync(
         HttpClient httpClient,
         Department dept)
@@ -50,9 +61,20 @@ public class ScraperService
         return results;
     }
 
+    /// <summary>
+    /// Builds the Ajax URI from the page URL.
+    /// </summary>
+    /// <param name="pageUrl">The base page URL</param>
+    /// <returns>The Ajax URI for fetching data</returns>
     private string BuildAjaxUri(string pageUrl) =>
         new Uri(new Uri(pageUrl), "/home/_TestData?langId=1").ToString();
 
+    /// <summary>
+    /// Builds form parameters for the HTTP request.
+    /// </summary>
+    /// <param name="dept">The department to build parameters for</param>
+    /// <param name="firstItem">The index of the first item to fetch</param>
+    /// <returns>A dictionary containing the form parameters</returns>
     private Dictionary<string, string> BuildFormParams(
         Department dept,
         int firstItem) => new()
@@ -64,6 +86,13 @@ public class ScraperService
         { "firstItem", firstItem.ToString() }
     };
 
+    /// <summary>
+    /// Creates an HTTP request message for fetching announcements.
+    /// </summary>
+    /// <param name="ajaxUri">The Ajax URI to send the request to</param>
+    /// <param name="referrerUrl">The referrer URL to use in the request</param>
+    /// <param name="formParams">The form parameters to include in the request</param>
+    /// <returns>An HTTP request message configured for fetching announcements</returns>
     private HttpRequestMessage CreateRequest(
         string ajaxUri,
         string referrerUrl,
@@ -81,6 +110,12 @@ public class ScraperService
         return request;
     }
 
+    /// <summary>
+    /// Fetches HTML rows from the HTTP response asynchronously.
+    /// </summary>
+    /// <param name="httpClient">The HTTP client to use for the request</param>
+    /// <param name="request">The HTTP request message to send</param>
+    /// <returns>A collection of HTML nodes representing table rows</returns>
     private async Task<HtmlNodeCollection> FetchRowsAsync(
         HttpClient httpClient,
         HttpRequestMessage request)
@@ -92,6 +127,12 @@ public class ScraperService
         return doc.DocumentNode.SelectNodes("//tr");
     }
 
+    /// <summary>
+    /// Parses HTML rows into announcement objects.
+    /// </summary>
+    /// <param name="rows">The HTML rows to parse</param>
+    /// <param name="dept">The department the announcements belong to</param>
+    /// <returns>A list of parsed announcements</returns>
     private List<Announcement> ParseAnnouncements(
         HtmlNodeCollection rows,
         Department dept)
