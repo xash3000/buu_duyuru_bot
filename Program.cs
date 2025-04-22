@@ -11,6 +11,12 @@ using Services;
 using Models;
 using System.Diagnostics.Eventing.Reader;
 #pragma warning disable CS0618 // Suppress obsolete SendTextMessageAsync warnings
+using Telegram.Bot.Types.ReplyMarkups;
+using System.Globalization;
+using System.Text;
+
+// track pending actions ("subscribe" or "unsubscribe") per chat
+var pendingActions = new Dictionary<long, string>();
 
 var dbService = new DatabaseService();
 dbService.InitializeDatabase();
@@ -37,7 +43,7 @@ Console.WriteLine($"@{me.Username} is running... Press Enter to terminate");
 
 var receiverOptions = new ReceiverOptions
 {
-  AllowedUpdates = new[] { UpdateType.Message }
+  AllowedUpdates = new[] { UpdateType.Message, UpdateType.CallbackQuery }
 };
 
 botClient.StartReceiving(
@@ -69,6 +75,11 @@ async Task HandleUpdateAsync(ITelegramBotClient bot, Update update, Cancellation
     if (message.Text is { } text)
       await HandleTextMessageAsync(bot, message, text, token);
   }
+  else if (update.CallbackQuery is { } callback)
+  {
+    Console.WriteLine($"[Debug] Received callback data: {callback.Data}");
+    await HandleCallbackQueryAsync(bot, callback, token);
+  }
 }
 
 /// <summary>
@@ -80,18 +91,23 @@ async Task HandleUpdateAsync(ITelegramBotClient bot, Update update, Cancellation
 /// <param name="token">Cancellation token for the async operation</param>
 async Task HandleTextMessageAsync(ITelegramBotClient bot, Message message, string messageText, CancellationToken token)
 {
-  Console.WriteLine($"[Debug] Handling command: {messageText} from chat {message.Chat.Id}");
+  Console.WriteLine($"[Debug] Handling message: {messageText} from chat {message.Chat.Id}");
   var parts = messageText.Trim().Split(' ', 2, StringSplitOptions.TrimEntries);
   var cmd = parts[0].Split('@')[0].ToLower();
-  var arg = parts.Length > 1 ? parts[1].ToLower() : string.Empty;
+  // interactive flow
+  if (pendingActions.TryGetValue(message.Chat.Id, out var pending) && !messageText.StartsWith("/"))
+  {
+    await HandlePendingActionAsync(bot, message, messageText, token);
+    return;
+  }
+  var arg = parts.Length > 1 ? parts[1] : string.Empty;
 
   switch (cmd)
   {
     case "/start": await HandleStartAsync(bot, message, token); break;
     case "/help": await HandleHelpAsync(bot, message, token); break;
-    case "/list": await HandleListAsync(bot, message, token); break;
     case "/subscribe": await HandleSubscribeAsync(bot, message, token); break;
-    case "/unsubscribe": await HandleUnsubscribeAsync(bot, message, arg, token); break;
+    case "/unsubscribe": await HandleUnsubscribeAsync(bot, message, token); break;
     case "/my": await HandleMyAsync(bot, message, token); break;
     default: await HandleUnknownAsync(bot, message, token); break;
   }
@@ -117,22 +133,10 @@ async Task HandleStartAsync(ITelegramBotClient bot, Message message, Cancellatio
 async Task HandleHelpAsync(ITelegramBotClient bot, Message message, CancellationToken token)
 {
   await bot.SendMessage(message.Chat.Id,
-      "/list - available departments\n" +
-      "/subscribe <dept> - subscribe with your Telegram username\n" +
-      "/unsubscribe <dept> - unsubscribe\n" +
+      "/subscribe - subscribe with your Telegram username\n" +
+      "/unsubscribe - unsubscribe\n" +
       "/my - show your subscriptions\n",
       cancellationToken: token);
-}
-
-/// <summary>
-/// Handles the /list command asynchronously.
-/// </summary>
-/// <param name="bot">The Telegram Bot client instance</param>
-/// <param name="message">The message received from Telegram</param>
-/// <param name="token">Cancellation token for the async operation</param>
-async Task HandleListAsync(ITelegramBotClient bot, Message message, CancellationToken token)
-{
-  await bot.SendMessage(message.Chat.Id, string.Join(", ", departments.Select(d => d.ShortName)), cancellationToken: token);
 }
 
 /// <summary>
@@ -143,28 +147,10 @@ async Task HandleListAsync(ITelegramBotClient bot, Message message, Cancellation
 /// <param name="token">Cancellation token for the async operation</param>
 async Task HandleSubscribeAsync(ITelegramBotClient bot, Message message, CancellationToken token)
 {
-  var parts = message.Text?.Trim().Split(' ', 2, StringSplitOptions.TrimEntries);
-  if (parts?.Length == 2)
-  {
-    var dept = parts[1].ToLower();
-    var username = message.From?.Username;
-    var fullName = GetUserFullName(message.From);
-
-    if (departments.Any(d => d.ShortName == dept))
-    {
-      // Get department ID
-      var department = departments.First(d => d.ShortName == dept);
-      var added = await dbService.AddSubscriptionAsync(
-          message.Chat.Id,
-          department.InsId,
-          username,
-          fullName);
-
-      await bot.SendMessage(message.Chat.Id, added ? $"Subscribed to {dept}." : "Already subscribed.", cancellationToken: token);
-    }
-    else await bot.SendMessage(message.Chat.Id, "Unknown department.", cancellationToken: token);
-  }
-  else await bot.SendMessage(message.Chat.Id, "Usage: /subscribe <dept>", cancellationToken: token);
+  await bot.SendTextMessageAsync(message.Chat.Id,
+      "Please type the department you want to subscribe to (or type 'iptal' to cancel):",
+      cancellationToken: token);
+  pendingActions[message.Chat.Id] = "subscribe";
 }
 
 /// <summary>
@@ -172,16 +158,132 @@ async Task HandleSubscribeAsync(ITelegramBotClient bot, Message message, Cancell
 /// </summary>
 /// <param name="bot">The Telegram Bot client instance</param>
 /// <param name="message">The message received from Telegram</param>
-/// <param name="arg">The department argument to unsubscribe from</param>
 /// <param name="token">Cancellation token for the async operation</param>
-async Task HandleUnsubscribeAsync(ITelegramBotClient bot, Message message, string arg, CancellationToken token)
+async Task HandleUnsubscribeAsync(ITelegramBotClient bot, Message message, CancellationToken token)
 {
-  if (departments.Any(d => d.ShortName == arg))
+  // Fetch current user subscriptions and show choices directly
+  var subsShortNames = await dbService.GetUserSubscriptionsAsync(message.Chat.Id);
+  if (!subsShortNames.Any())
   {
-    var removed = await dbService.RemoveSubscriptionAsync(message.Chat.Id, int.Parse(arg));
-    await bot.SendMessage(message.Chat.Id, removed ? $"Unsubscribed from {arg}." : "You were not subscribed.", cancellationToken: token);
+    await bot.SendTextMessageAsync(message.Chat.Id,
+        "You have no subscriptions.",
+        cancellationToken: token);
   }
-  else await bot.SendMessage(message.Chat.Id, "Unknown department.", cancellationToken: token);
+  else
+  {
+    var subsDepts = departments.Where(d => subsShortNames.Contains(d.ShortName)).ToList();
+    var buttonList = subsDepts.Select(d => InlineKeyboardButton.WithCallbackData(
+        text: d.Name,
+        callbackData: $"unsubscribe:{d.InsId}"));
+    var cancelButton = InlineKeyboardButton.WithCallbackData(text: "iptal", callbackData: "cancel");
+    var buttons = buttonList.Concat(new[] { cancelButton });
+    var markup = new InlineKeyboardMarkup(buttons);
+    await bot.SendTextMessageAsync(message.Chat.Id,
+        "Please select a department to unsubscribe:",
+        replyMarkup: markup,
+        cancellationToken: token);
+  }
+}
+
+/// <summary>
+/// Processes pending subscribe/unsubscribe searches.
+/// </summary>
+async Task HandlePendingActionAsync(ITelegramBotClient bot, Message message, string query, CancellationToken token)
+{
+  // allow user to cancel pending operation
+  if (NormalizeText(query) == "iptal")
+  {
+    pendingActions.Remove(message.Chat.Id);
+    await bot.SendTextMessageAsync(message.Chat.Id,
+        "Operation cancelled.", cancellationToken: token);
+    return;
+  }
+  var action = pendingActions[message.Chat.Id];
+  // normalize query
+  string norm = NormalizeText(query);
+  // choose source list
+  var list = action == "subscribe" ? departments : (await dbService.GetUserSubscriptionsAsync(message.Chat.Id)
+                .ContinueWith(t => departments.Where(d => t.Result.Contains(d.ShortName)).ToList()));
+  var matches = list.Where(d => NormalizeText(d.Name).Contains(norm)
+                          || NormalizeText(d.ShortName).Contains(norm)).ToList();
+  if (!matches.Any())
+  {
+    await bot.SendTextMessageAsync(message.Chat.Id,
+        "No department found. Please try again:", cancellationToken: token);
+    return;
+  }
+  // build buttons with cancel option
+  var buttonList = matches.Select(d => InlineKeyboardButton.WithCallbackData(
+      text: d.Name,
+      callbackData: $"{action}:{d.InsId}"));
+  // add cancel button
+  var cancelButton = InlineKeyboardButton.WithCallbackData(text: "iptal", callbackData: "cancel");
+  var buttons = buttonList.Concat(new[] { cancelButton });
+  var markup = new InlineKeyboardMarkup(buttons);
+  await bot.SendTextMessageAsync(message.Chat.Id,
+      "Please select a department:", replyMarkup: markup, cancellationToken: token);
+  pendingActions.Remove(message.Chat.Id);
+}
+
+/// <summary>
+/// Handles subscribe/unsubscribe button callbacks.
+/// </summary>
+async Task HandleCallbackQueryAsync(ITelegramBotClient bot, CallbackQuery callback, CancellationToken token)
+{
+  // ensure data and message are present
+  if (callback.Data == null || callback.Message == null)
+  {
+    await bot.AnswerCallbackQueryAsync(callback.Id, cancellationToken: token);
+    return;
+  }
+  var targetChatId = callback.Message.Chat.Id;
+  var messageId = callback.Message.MessageId;
+  // handle cancel button
+  if (callback.Data == "cancel")
+  {
+    await bot.EditMessageTextAsync(targetChatId, messageId,
+        "Operation cancelled.", cancellationToken: token);
+    await bot.AnswerCallbackQueryAsync(callback.Id, cancellationToken: token);
+    return;
+  }
+  // parse action and insId
+  var parts = callback.Data.Split(':', 2);
+  if (parts.Length != 2 || !int.TryParse(parts[1], out var insId))
+  {
+    await bot.AnswerCallbackQueryAsync(callback.Id, cancellationToken: token);
+    return;
+  }
+  var action = parts[0];
+  string response;
+  if (action == "subscribe")
+  {
+    var user = callback.From;
+    response = await (dbService.AddSubscriptionAsync(targetChatId, insId, user.Username, GetUserFullName(user))
+      .ContinueWith(t => t.Result ? "Subscribed." : "You are already subscribed."));
+  }
+  else // unsubscribe
+  {
+    response = await dbService.RemoveSubscriptionAsync(targetChatId, insId)
+      .ContinueWith(t => t.Result ? "Unsubscribed." : "You are not subscribed.");
+  }
+  await bot.EditMessageTextAsync(targetChatId, messageId, response, cancellationToken: token);
+  await bot.AnswerCallbackQueryAsync(callback.Id, cancellationToken: token);
+}
+
+/// <summary>
+/// Normalizes text by removing diacritics and converting to lowercase.
+/// </summary>
+string NormalizeText(string text)
+{
+  var formD = text.Normalize(NormalizationForm.FormD);
+  var sb = new StringBuilder();
+  foreach (var ch in formD)
+  {
+    var uc = CharUnicodeInfo.GetUnicodeCategory(ch);
+    if (uc != UnicodeCategory.NonSpacingMark)
+      sb.Append(ch);
+  }
+  return sb.ToString().Normalize(NormalizationForm.FormC).ToLowerInvariant();
 }
 
 /// <summary>
@@ -263,10 +365,10 @@ async Task FetchAndSendAsync(ITelegramBotClient bot, CancellationToken token)
         await bot.SendMessage(
             chatId: chatId,
             text:
-                "📢 Duyuru\n\n" +
-                $"👤 Kimden: {department.Name}  \n" +
-                $"📅 Tarih: {ann.AddedDate:dd.MM.yyyy}  \n\n" +
-                "🗒 Konu:  \n" +
+                "📢 Announcement\n\n" +
+                $"👤 From: {department.Name}  \n" +
+                $"📅 Date: {ann.AddedDate:dd.MM.yyyy}  \n\n" +
+                "🗒 Subject:\n" +
                 $"> {ann.Title}\n\n" +
                 $"🔗 {ann.Link}",
             linkPreviewOptions: new LinkPreviewOptions
