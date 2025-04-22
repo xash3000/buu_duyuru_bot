@@ -80,7 +80,6 @@ async Task HandleTextMessageAsync(ITelegramBotClient bot, Message message, strin
     case "/subscribe": await HandleSubscribeAsync(bot, message, token); break;
     case "/unsubscribe": await HandleUnsubscribeAsync(bot, message, arg, token); break;
     case "/my": await HandleMyAsync(bot, message, token); break;
-    case "/fetch": await HandleFetchAsync(bot, message, token); break;
     default: await HandleUnknownAsync(bot, message, token); break;
   }
 }
@@ -97,8 +96,7 @@ async Task HandleHelpAsync(ITelegramBotClient bot, Message message, Cancellation
       "/list - available departments\n" +
       "/subscribe <dept> - subscribe with your Telegram username\n" +
       "/unsubscribe <dept> - unsubscribe\n" +
-      "/my - show your subscriptions\n" +
-      "/fetch - fetch announcements now",
+      "/my - show your subscriptions\n",
       cancellationToken: token);
 }
 
@@ -107,17 +105,26 @@ async Task HandleListAsync(ITelegramBotClient bot, Message message, Cancellation
   await bot.SendMessage(message.Chat.Id, string.Join(", ", departments.Select(d => d.ShortName)), cancellationToken: token);
 }
 
-// Subscribe using only department and Telegram username
+// Subscribe using department and Telegram user information
 async Task HandleSubscribeAsync(ITelegramBotClient bot, Message message, CancellationToken token)
 {
   var parts = message.Text?.Trim().Split(' ', 2, StringSplitOptions.TrimEntries);
   if (parts?.Length == 2)
   {
     var dept = parts[1].ToLower();
-    var userName = message.From?.Username ?? message.From?.FirstName;
+    var username = message.From?.Username;
+    var fullName = GetUserFullName(message.From);
+
     if (departments.Any(d => d.ShortName == dept))
     {
-      var added = await dbService.AddSubscriptionAsync(message.Chat.Id, dept, userName);
+      // Get department ID
+      var department = departments.First(d => d.ShortName == dept);
+      var added = await dbService.AddSubscriptionAsync(
+          message.Chat.Id,
+          department.InsId,
+          username,
+          fullName);
+
       await bot.SendMessage(message.Chat.Id, added ? $"Subscribed to {dept}." : "Already subscribed.", cancellationToken: token);
     }
     else await bot.SendMessage(message.Chat.Id, "Unknown department.", cancellationToken: token);
@@ -129,7 +136,7 @@ async Task HandleUnsubscribeAsync(ITelegramBotClient bot, Message message, strin
 {
   if (departments.Any(d => d.ShortName == arg))
   {
-    var removed = await dbService.RemoveSubscriptionAsync(message.Chat.Id, arg);
+    var removed = await dbService.RemoveSubscriptionAsync(message.Chat.Id, int.Parse(arg));
     await bot.SendMessage(message.Chat.Id, removed ? $"Unsubscribed from {arg}." : "You were not subscribed.", cancellationToken: token);
   }
   else await bot.SendMessage(message.Chat.Id, "Unknown department.", cancellationToken: token);
@@ -139,25 +146,6 @@ async Task HandleMyAsync(ITelegramBotClient bot, Message message, CancellationTo
 {
   var subs = await dbService.GetUserSubscriptionsAsync(message.Chat.Id);
   await bot.SendMessage(message.Chat.Id, subs.Any() ? string.Join(", ", subs) : "No subscriptions.", cancellationToken: token);
-}
-
-// Handle /fetch: perform fetch and send confirmation
-async Task HandleFetchAsync(ITelegramBotClient bot, Message message, CancellationToken token)
-{
-  Console.WriteLine($"[Debug] Manual fetch requested by chat {message.Chat.Id}");
-  var announcements = await scraper.FetchAnnouncementsAsync(departments);
-  int sentCount = 0;
-  foreach (var ann in announcements)
-  {
-    Console.WriteLine($"[Debug] Manual send announcement: {ann.Link}");
-    await bot.SendMessage(message.Chat.Id,
-        $"Duyuru\nKimden: {ann.Department}\nTarih: {ann.AddedDate:dd.MM.yyyy}\n\n{ann.Title}\n\n{ann.Link}",
-        cancellationToken: token);
-    sentCount++;
-  }
-  await bot.SendMessage(message.Chat.Id,
-      sentCount > 0 ? $"Fetch completed, sent {sentCount} announcements." : "Fetch completed, no announcements found.",
-      cancellationToken: token);
 }
 
 async Task HandleUnknownAsync(ITelegramBotClient bot, Message message, CancellationToken token)
@@ -173,7 +161,7 @@ Task HandleErrorAsync(ITelegramBotClient bot, Exception ex, CancellationToken to
 
 async Task PeriodicFetchAndSendAsync(ITelegramBotClient bot, CancellationToken token)
 {
-  var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+  var timer = new PeriodicTimer(TimeSpan.FromSeconds(20));
   try
   {
     while (await timer.WaitForNextTickAsync(token))
@@ -193,15 +181,20 @@ async Task FetchAndSendAsync(ITelegramBotClient bot, CancellationToken token)
     if (!await dbService.AnnouncementExistsAsync(ann.Link))
     {
       Console.WriteLine($"[Periodic] Sending announcement: {ann.Link}");
-      await dbService.InsertAnnouncementAsync(ann.Department, ann.DepartmentShortName, ann.Link, ann.Title, ann.AddedDate);
-      var subs = await dbService.GetSubscribersAsync(ann.DepartmentShortName);
+      await dbService.InsertAnnouncementAsync(ann.InsId, ann.Link, ann.Title, ann.AddedDate);
+
+      // Find the department from the list based on InsId
+      var department = departments.FirstOrDefault(d => d.InsId == ann.InsId);
+      if (department == null) continue; // Skip if department not found
+
+      var subs = await dbService.GetSubscribersAsync(ann.InsId);
       foreach (var chatId in subs)
       {
         await bot.SendMessage(
             chatId: chatId,
             text:
                 "📢 Duyuru\n\n" +
-                $"👤 Kimden: {ann.Department}  \n" +
+                $"👤 Kimden: {department.Name}  \n" +
                 $"📅 Tarih: {ann.AddedDate:dd.MM.yyyy}  \n\n" +
                 "🗒 Konu:  \n" +
                 $"> {ann.Title}\n\n" +
@@ -213,8 +206,27 @@ async Task FetchAndSendAsync(ITelegramBotClient bot, CancellationToken token)
             parseMode: ParseMode.Markdown,
             cancellationToken: token
         );
-
       }
     }
   }
+}
+
+// Helper method to get the user's full name from Telegram User object
+string GetUserFullName(User? user)
+{
+  if (user == null) return "Unknown User";
+
+  // Combine first and last name if both available
+  if (!string.IsNullOrEmpty(user.FirstName) && !string.IsNullOrEmpty(user.LastName))
+    return $"{user.FirstName} {user.LastName}";
+
+  // First name only
+  if (!string.IsNullOrEmpty(user.FirstName))
+    return user.FirstName;
+
+  // Username only if that's all we have
+  if (!string.IsNullOrEmpty(user.Username))
+    return $"@{user.Username}";
+
+  return "Unknown User";
 }

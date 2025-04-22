@@ -15,18 +15,28 @@ public class DatabaseService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            CREATE TABLE IF NOT EXISTS Departments (Name TEXT PRIMARY KEY, ShortName TEXT UNIQUE, Url TEXT, InsId INTEGER);
-            CREATE TABLE IF NOT EXISTS Subscriptions (ChatId TEXT, Department TEXT, Username TEXT, PRIMARY KEY(ChatId, Department));
-            CREATE TABLE IF NOT EXISTS Announcements (Id INTEGER PRIMARY KEY AUTOINCREMENT, Department TEXT, DepartmentShortName TEXT, Link TEXT UNIQUE, Title TEXT, AddedDate DATETIME);
+            CREATE TABLE IF NOT EXISTS Users (ChatId INTEGER PRIMARY KEY, Username TEXT, FullName TEXT);
+            CREATE TABLE IF NOT EXISTS  Departments (InsId INTEGER PRIMARY KEY, Name TEXT, 
+                ShortName TEXT UNIQUE, Url TEXT);
+            CREATE TABLE IF NOT EXISTS Subscriptions (ChatId INTEGER, InsId INTEGER, 
+                PRIMARY KEY(ChatId, InsId),
+                FOREIGN KEY(ChatId) REFERENCES Users(ChatId),
+                FOREIGN KEY(InsId) REFERENCES Departments(InsId));
+            CREATE TABLE IF NOT EXISTS Announcements (Id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                InsId INTEGER, Link TEXT UNIQUE, Title TEXT, AddedDate DATETIME,
+                FOREIGN KEY(InsId) REFERENCES Departments(InsId));
         ";
         cmd.ExecuteNonQuery();
     }
 
     public async Task<bool> AddDepartmentAsync(Department dep)
     {
-        using var conn = new SqliteConnection($"Data Source={DbPath}"); await conn.OpenAsync();
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        await conn.OpenAsync();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT OR IGNORE INTO Departments (Name, ShortName, Url, InsId) VALUES (@name, @shortName, @url, @insId);";
+        cmd.CommandText =
+            "INSERT OR IGNORE INTO Departments (Name, ShortName, Url, InsId) " +
+            "VALUES (@name, @shortName, @url, @insId);";
         cmd.Parameters.AddWithValue("@name", dep.Name);
         cmd.Parameters.AddWithValue("@shortName", dep.ShortName);
         cmd.Parameters.AddWithValue("@url", dep.Url);
@@ -36,7 +46,8 @@ public class DatabaseService
 
     public async Task<List<Department>> GetDepartmentsAsync()
     {
-        using var conn = new SqliteConnection($"Data Source={DbPath}"); await conn.OpenAsync();
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        await conn.OpenAsync();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT Name, ShortName, Url, InsId FROM Departments;";
         var list = new List<Department>();
@@ -54,32 +65,63 @@ public class DatabaseService
         return list;
     }
 
-    public async Task<bool> AddSubscriptionAsync(long chatId, string dept, string? username)
+    public async Task<bool> AddUserAsync(
+        long chatId,
+        string? username,
+        string fullName)
     {
-        using var conn = new SqliteConnection($"Data Source={DbPath}"); await conn.OpenAsync();
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        await conn.OpenAsync();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT OR IGNORE INTO Subscriptions (ChatId, Department, Username) VALUES (@chatId, @dept, @username);";
-        cmd.Parameters.AddWithValue("@chatId", chatId.ToString());
-        cmd.Parameters.AddWithValue("@dept", dept);
+        cmd.CommandText =
+            "INSERT OR IGNORE INTO Users (ChatId, Username, FullName) " +
+            "VALUES (@chatId, @username, @fullName);";
+        cmd.Parameters.AddWithValue("@chatId", chatId);
         cmd.Parameters.AddWithValue("@username", username ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@fullName", fullName);
         return await cmd.ExecuteNonQueryAsync() > 0;
     }
 
-    public async Task<bool> RemoveSubscriptionAsync(long chatId, string dept)
+    public async Task<bool> AddSubscriptionAsync(
+        long chatId,
+        int insId,
+        string? username,
+        string fullName)
     {
-        using var conn = new SqliteConnection($"Data Source={DbPath}"); await conn.OpenAsync();
+        await AddUserAsync(chatId, username, fullName);
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        await conn.OpenAsync();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM Subscriptions WHERE ChatId=@chatId AND Department=@dept;";
-        cmd.Parameters.AddWithValue("@chatId", chatId.ToString()); cmd.Parameters.AddWithValue("@dept", dept);
+        cmd.CommandText =
+            "INSERT OR IGNORE INTO Subscriptions (ChatId, InsId) " +
+            "VALUES (@chatId, @insId);";
+        cmd.Parameters.AddWithValue("@chatId", chatId);
+        cmd.Parameters.AddWithValue("@insId", insId);
+        return await cmd.ExecuteNonQueryAsync() > 0;
+    }
+
+    public async Task<bool> RemoveSubscriptionAsync(long chatId, int insId)
+    {
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        await conn.OpenAsync();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "DELETE FROM Subscriptions WHERE ChatId=@chatId AND InsId=@insId;";
+        cmd.Parameters.AddWithValue("@chatId", chatId);
+        cmd.Parameters.AddWithValue("@insId", insId);
         return await cmd.ExecuteNonQueryAsync() > 0;
     }
 
     public async Task<List<string>> GetUserSubscriptionsAsync(long chatId)
     {
-        using var conn = new SqliteConnection($"Data Source={DbPath}"); await conn.OpenAsync();
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        await conn.OpenAsync();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Department FROM Subscriptions WHERE ChatId=@chatId;";
-        cmd.Parameters.AddWithValue("@chatId", chatId.ToString());
+        cmd.CommandText =
+            "SELECT d.ShortName FROM Subscriptions s " +
+            "JOIN Departments d ON s.InsId=d.InsId " +
+            "WHERE s.ChatId=@chatId;";
+        cmd.Parameters.AddWithValue("@chatId", chatId);
         var list = new List<string>();
         using var rdr = await cmd.ExecuteReaderAsync();
         while (await rdr.ReadAsync()) list.Add(rdr.GetString(0));
@@ -88,10 +130,11 @@ public class DatabaseService
 
     public async Task<List<Subscription>> GetSubscriptionsAsync(long chatId)
     {
-        using var conn = new SqliteConnection($"Data Source={DbPath}"); await conn.OpenAsync();
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        await conn.OpenAsync();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Department, Username FROM Subscriptions WHERE ChatId=@chatId;";
-        cmd.Parameters.AddWithValue("@chatId", chatId.ToString());
+        cmd.CommandText = "SELECT InsId FROM Subscriptions WHERE ChatId=@chatId;";
+        cmd.Parameters.AddWithValue("@chatId", chatId);
         var list = new List<Subscription>();
         using var rdr = await cmd.ExecuteReaderAsync();
         while (await rdr.ReadAsync())
@@ -99,59 +142,56 @@ public class DatabaseService
             list.Add(new Subscription
             {
                 ChatId = chatId,
-                Department = rdr.GetString(0),
-                Username = rdr.IsDBNull(1) ? null : rdr.GetString(1)
+                InsId = rdr.GetInt32(0)
             });
         }
         return list;
     }
 
-    public async Task<List<long>> GetSubscribersAsync(string deptShort)
+    public async Task<List<long>> GetSubscribersAsync(int insId)
     {
-        using var conn = new SqliteConnection($"Data Source={DbPath}"); await conn.OpenAsync();
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        await conn.OpenAsync();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT ChatId FROM Subscriptions WHERE Department=@deptShort;";
-        cmd.Parameters.AddWithValue("@deptShort", deptShort);
+        cmd.CommandText = "SELECT ChatId FROM Subscriptions WHERE InsId=@insId;";
+        cmd.Parameters.AddWithValue("@insId", insId);
         var list = new List<long>();
         using var rdr = await cmd.ExecuteReaderAsync();
         while (await rdr.ReadAsync())
-            if (long.TryParse(rdr.GetString(0), out var id))
-                list.Add(id);
+            list.Add(rdr.GetInt64(0));
         return list;
     }
 
     public async Task<bool> AnnouncementExistsAsync(string link)
     {
-        using var conn = new SqliteConnection($"Data Source={DbPath}"); await conn.OpenAsync();
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        await conn.OpenAsync();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT COUNT(1) FROM Announcements WHERE Link=@link;";
         cmd.Parameters.AddWithValue("@link", link);
         var result = await cmd.ExecuteScalarAsync();
-        // Fix null unboxing issue by safely handling the result
         var count = result != null ? Convert.ToInt64(result) : 0;
         return count > 0;
     }
 
-    public async Task InsertAnnouncementAsync(string dept, string deptShort, string link, string title)
+    public async Task InsertAnnouncementAsync(int insId, string link, string title)
     {
-        using var conn = new SqliteConnection($"Data Source={DbPath}"); await conn.OpenAsync();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO Announcements (Department, DepartmentShortName, Link, Title, AddedDate) VALUES (@dept, @deptShort, @link, @title, @addedDate);";
-        cmd.Parameters.AddWithValue("@dept", dept);
-        cmd.Parameters.AddWithValue("@deptShort", deptShort);
-        cmd.Parameters.AddWithValue("@link", link);
-        cmd.Parameters.AddWithValue("@title", title);
-        cmd.Parameters.AddWithValue("@addedDate", DateTime.Now);
-        await cmd.ExecuteNonQueryAsync();
+        await InsertAnnouncementAsync(insId, link, title, DateTime.Now);
     }
 
-    public async Task InsertAnnouncementAsync(string dept, string deptShort, string link, string title, DateTime addedDate)
+    public async Task InsertAnnouncementAsync(
+        int insId,
+        string link,
+        string title,
+        DateTime addedDate)
     {
-        using var conn = new SqliteConnection($"Data Source={DbPath}"); await conn.OpenAsync();
+        using var conn = new SqliteConnection($"Data Source={DbPath}");
+        await conn.OpenAsync();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO Announcements (Department, DepartmentShortName, Link, Title, AddedDate) VALUES (@dept, @deptShort, @link, @title, @addedDate);";
-        cmd.Parameters.AddWithValue("@dept", dept);
-        cmd.Parameters.AddWithValue("@deptShort", deptShort);
+        cmd.CommandText =
+            "INSERT INTO Announcements (InsId, Link, Title, AddedDate) " +
+            "VALUES (@insId, @link, @title, @addedDate);";
+        cmd.Parameters.AddWithValue("@insId", insId);
         cmd.Parameters.AddWithValue("@link", link);
         cmd.Parameters.AddWithValue("@title", title);
         cmd.Parameters.AddWithValue("@addedDate", addedDate);

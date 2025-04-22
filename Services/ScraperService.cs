@@ -10,7 +10,8 @@ using System.Net;
 
 public class ScraperService
 {
-    public async Task<List<Announcement>> FetchAnnouncementsAsync(List<Department> departments)
+    public async Task<List<Announcement>> FetchAnnouncementsAsync(
+        List<Department> departments)
     {
         var announcements = new List<Announcement>();
         using var httpClient = new HttpClient();
@@ -18,7 +19,8 @@ public class ScraperService
         {
             try
             {
-                var deptAnnouncements = await FetchAnnouncementsForDepartmentAsync(httpClient, dept);
+                var deptAnnouncements =
+                    await FetchAnnouncementsForDepartmentAsync(httpClient, dept);
                 announcements.AddRange(deptAnnouncements);
             }
             catch
@@ -29,7 +31,9 @@ public class ScraperService
         return announcements;
     }
 
-    private async Task<List<Announcement>> FetchAnnouncementsForDepartmentAsync(HttpClient httpClient, Department dept)
+    private async Task<List<Announcement>> FetchAnnouncementsForDepartmentAsync(
+        HttpClient httpClient,
+        Department dept)
     {
         var results = new List<Announcement>();
         var ajaxUri = BuildAjaxUri(dept.Url);
@@ -40,15 +44,18 @@ public class ScraperService
             var request = CreateRequest(ajaxUri, dept.Url, formParams);
             var rows = await FetchRowsAsync(httpClient, request);
             if (rows == null || rows.Count == 0) break;
-            results.AddRange(ParseAnnouncements(rows, dept.Name, dept.ShortName));
+            results.AddRange(ParseAnnouncements(rows, dept));
             firstItem += rows.Count;
         }
         return results;
     }
 
-    private string BuildAjaxUri(string pageUrl) => new Uri(new Uri(pageUrl), "/home/_TestData?langId=1").ToString();
+    private string BuildAjaxUri(string pageUrl) =>
+        new Uri(new Uri(pageUrl), "/home/_TestData?langId=1").ToString();
 
-    private Dictionary<string, string> BuildFormParams(Department dept, int firstItem) => new()
+    private Dictionary<string, string> BuildFormParams(
+        Department dept,
+        int firstItem) => new()
     {
         { "sortOrder", "ascending" },
         { "searchString", string.Empty },
@@ -57,20 +64,26 @@ public class ScraperService
         { "firstItem", firstItem.ToString() }
     };
 
-    private HttpRequestMessage CreateRequest(string ajaxUri, string referrerUrl, Dictionary<string, string> formParams)
+    private HttpRequestMessage CreateRequest(
+        string ajaxUri,
+        string referrerUrl,
+        Dictionary<string, string> formParams)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, ajaxUri)
         {
             Content = new FormUrlEncodedContent(formParams)
         };
         request.Headers.Referrer = new Uri(referrerUrl);
-        request.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) BUU_DUYURU_BOT");
+        request.Headers.UserAgent.ParseAdd(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) BUU_DUYURU_BOT");
         request.Headers.Add("X-Requested-With", "XMLHttpRequest");
         request.Headers.Accept.ParseAdd("text/html");
         return request;
     }
 
-    private async Task<HtmlNodeCollection> FetchRowsAsync(HttpClient httpClient, HttpRequestMessage request)
+    private async Task<HtmlNodeCollection> FetchRowsAsync(
+        HttpClient httpClient,
+        HttpRequestMessage request)
     {
         var response = await httpClient.SendAsync(request);
         var html = await response.Content.ReadAsStringAsync();
@@ -79,24 +92,35 @@ public class ScraperService
         return doc.DocumentNode.SelectNodes("//tr");
     }
 
-    private List<Announcement> ParseAnnouncements(HtmlNodeCollection rows, string departmentName, string departmentShortName)
+    private List<Announcement> ParseAnnouncements(
+        HtmlNodeCollection rows,
+        Department dept)
     {
         var list = new List<Announcement>();
         foreach (var row in rows)
         {
             var aNode = row.SelectSingleNode(".//td[1]//a");
             if (aNode == null) continue;
-            // build full link with short name prefix
             var href = aNode.GetAttributeValue("href", string.Empty);
-            var link = $"https://uludag.edu.tr/{departmentShortName}/{href.TrimStart('/')}";
-            // Decode HTML entities in title
+            var link = $"https://uludag.edu.tr/{dept.ShortName}/{href.TrimStart('/')}";
             var title = WebUtility.HtmlDecode(aNode.InnerText).Trim();
             var dateNode = row.SelectSingleNode(".//td[2]");
             if (dateNode == null) continue;
             var dateText = dateNode.InnerText.Trim();
-            if (!DateTime.TryParseExact(dateText, "dd.MM.yyyy", CultureInfo.GetCultureInfo("tr-TR"), DateTimeStyles.None, out var addedDate))
+            if (!DateTime.TryParseExact(
+                dateText,
+                "dd.MM.yyyy",
+                CultureInfo.GetCultureInfo("tr-TR"),
+                DateTimeStyles.None,
+                out var addedDate))
                 addedDate = DateTime.Now;
-            list.Add(new Announcement { Department = departmentName, DepartmentShortName = departmentShortName, Link = link, Title = title, AddedDate = addedDate });
+            list.Add(new Announcement
+            {
+                InsId = dept.InsId,
+                Link = link,
+                Title = title,
+                AddedDate = addedDate
+            });
         }
         return list;
     }
