@@ -7,9 +7,32 @@ using HtmlAgilityPack;
 using Models;
 using System.Globalization;
 using System.Net;
+using System.Threading;
 
 public class ScraperService
 {
+    private static readonly HttpClient _httpClient;
+    private static readonly SemaphoreSlim _throttle = new SemaphoreSlim(1, 1);
+    private static readonly Random _rnd = new Random();
+    private static readonly string[] _userAgents = new[]
+    {
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
+        "Mozilla/5.0 (X11; Linux x86_64) Gecko/20100101 Firefox/117.0"
+    };
+
+    static ScraperService()
+    {
+        _httpClient = new HttpClient(new HttpClientHandler
+        {
+            AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
+            UseCookies = false
+        });
+        _httpClient.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+        _httpClient.DefaultRequestHeaders.AcceptLanguage.ParseAdd("tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7");
+        _httpClient.Timeout = TimeSpan.FromSeconds(15);
+    }
+
     /// <summary>
     /// Fetches announcements from all departments asynchronously.
     /// </summary>
@@ -19,18 +42,27 @@ public class ScraperService
         List<Department> departments)
     {
         var announcements = new List<Announcement>();
-        using var httpClient = new HttpClient();
         foreach (var dept in departments)
         {
+            await _throttle.WaitAsync();
             try
             {
-                var deptAnnouncements =
-                    await FetchAnnouncementsForDepartmentAsync(httpClient, dept);
+                // random delay between 100–500ms
+                await Task.Delay(_rnd.Next(100, 501));
+                // rotate User-Agent
+                var ua = _userAgents[_rnd.Next(_userAgents.Length)];
+                _httpClient.DefaultRequestHeaders.UserAgent.Clear();
+                _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(ua);
+                var deptAnnouncements = await FetchAnnouncementsForDepartmentAsync(_httpClient, dept);
                 announcements.AddRange(deptAnnouncements);
             }
             catch
             {
                 // ignore errors per department
+            }
+            finally
+            {
+                _throttle.Release();
             }
         }
         return announcements;
