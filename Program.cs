@@ -1,16 +1,9 @@
-﻿using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Collections.Generic;
-using Telegram.Bot;
+﻿using Telegram.Bot;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Services;
 using Models;
-using System.Diagnostics.Eventing.Reader;
-#pragma warning disable CS0618 // Suppress obsolete SendTextMessageAsync warnings
 using Telegram.Bot.Types.ReplyMarkups;
 using System.Globalization;
 using System.Text;
@@ -147,7 +140,7 @@ async Task HandleHelpAsync(ITelegramBotClient bot, Message message, Cancellation
 /// <param name="token">Cancellation token for the async operation</param>
 async Task HandleSubscribeAsync(ITelegramBotClient bot, Message message, CancellationToken token)
 {
-  await bot.SendTextMessageAsync(message.Chat.Id,
+  await bot.SendMessage(message.Chat.Id,
       "Lütfen takip etmek istediğiniz bölümü yazın (veya 'iptal' yazarak iptal edin):",
       cancellationToken: token);
   pendingActions[message.Chat.Id] = "follow";
@@ -165,7 +158,7 @@ async Task HandleUnsubscribeAsync(ITelegramBotClient bot, Message message, Cance
   var subsShortNames = await dbService.GetUserSubscriptionsAsync(message.Chat.Id);
   if (!subsShortNames.Any())
   {
-    await bot.SendTextMessageAsync(message.Chat.Id,
+    await bot.SendMessage(message.Chat.Id,
         "Takip ettiğiniz bölüm bulunmuyor.",
         cancellationToken: token);
   }
@@ -178,7 +171,7 @@ async Task HandleUnsubscribeAsync(ITelegramBotClient bot, Message message, Cance
     var cancelButton = InlineKeyboardButton.WithCallbackData(text: "iptal", callbackData: "cancel");
     var buttons = buttonList.Concat(new[] { cancelButton });
     var markup = new InlineKeyboardMarkup(buttons);
-    await bot.SendTextMessageAsync(message.Chat.Id,
+    await bot.SendMessage(message.Chat.Id,
         "Lütfen takipten çıkmak istediğiniz bölümü seçin:",
         replyMarkup: markup,
         cancellationToken: token);
@@ -194,7 +187,7 @@ async Task HandlePendingActionAsync(ITelegramBotClient bot, Message message, str
   if (NormalizeText(query) == "iptal")
   {
     pendingActions.Remove(message.Chat.Id);
-    await bot.SendTextMessageAsync(message.Chat.Id,
+    await bot.SendMessage(message.Chat.Id,
         "İşlem iptal edildi.", cancellationToken: token);
     return;
   }
@@ -208,7 +201,7 @@ async Task HandlePendingActionAsync(ITelegramBotClient bot, Message message, str
                           || NormalizeText(d.ShortName).Contains(norm)).ToList();
   if (!matches.Any())
   {
-    await bot.SendTextMessageAsync(message.Chat.Id,
+    await bot.SendMessage(message.Chat.Id,
         "Bölüm bulunamadı. Lütfen tekrar deneyin:", cancellationToken: token);
     return;
   }
@@ -220,7 +213,7 @@ async Task HandlePendingActionAsync(ITelegramBotClient bot, Message message, str
   var cancelButton = InlineKeyboardButton.WithCallbackData(text: "iptal", callbackData: "cancel");
   var buttons = buttonList.Concat(new[] { cancelButton });
   var markup = new InlineKeyboardMarkup(buttons);
-  await bot.SendTextMessageAsync(message.Chat.Id,
+  await bot.SendMessage(message.Chat.Id,
       "Lütfen bir bölüm seçin:", replyMarkup: markup, cancellationToken: token);
   pendingActions.Remove(message.Chat.Id);
 }
@@ -233,7 +226,7 @@ async Task HandleCallbackQueryAsync(ITelegramBotClient bot, CallbackQuery callba
   // ensure data and message are present
   if (callback.Data == null || callback.Message == null)
   {
-    await bot.AnswerCallbackQueryAsync(callback.Id, cancellationToken: token);
+    await bot.AnswerCallbackQuery(callback.Id, cancellationToken: token);
     return;
   }
   var targetChatId = callback.Message.Chat.Id;
@@ -241,16 +234,16 @@ async Task HandleCallbackQueryAsync(ITelegramBotClient bot, CallbackQuery callba
   // handle cancel button
   if (callback.Data == "cancel")
   {
-    await bot.EditMessageTextAsync(targetChatId, messageId,
+    await bot.EditMessageText(targetChatId, messageId,
         "İşlem iptal edildi.", cancellationToken: token);
-    await bot.AnswerCallbackQueryAsync(callback.Id, cancellationToken: token);
+    await bot.AnswerCallbackQuery(callback.Id, cancellationToken: token);
     return;
   }
   // parse action and insId
   var parts = callback.Data.Split(':', 2);
   if (parts.Length != 2 || !int.TryParse(parts[1], out var insId))
   {
-    await bot.AnswerCallbackQueryAsync(callback.Id, cancellationToken: token);
+    await bot.AnswerCallbackQuery(callback.Id, cancellationToken: token);
     return;
   }
   var action = parts[0];
@@ -266,8 +259,8 @@ async Task HandleCallbackQueryAsync(ITelegramBotClient bot, CallbackQuery callba
     response = await dbService.RemoveSubscriptionAsync(targetChatId, insId)
       .ContinueWith(t => t.Result ? "Takipten çıkıldı." : "Zaten takip etmiyorsunuz.");
   }
-  await bot.EditMessageTextAsync(targetChatId, messageId, response, cancellationToken: token);
-  await bot.AnswerCallbackQueryAsync(callback.Id, cancellationToken: token);
+  await bot.EditMessageText(targetChatId, messageId, response, cancellationToken: token);
+  await bot.AnswerCallbackQuery(callback.Id, cancellationToken: token);
 }
 
 /// <summary>

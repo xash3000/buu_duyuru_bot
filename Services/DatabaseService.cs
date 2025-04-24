@@ -19,16 +19,22 @@ public class DatabaseService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             CREATE TABLE IF NOT EXISTS Users (ChatId INTEGER PRIMARY KEY, Username TEXT, FullName TEXT);
+
             CREATE TABLE IF NOT EXISTS  Departments (InsId INTEGER PRIMARY KEY, Name TEXT, 
                 ShortName TEXT UNIQUE, Url TEXT);
+
             CREATE TABLE IF NOT EXISTS Subscriptions (ChatId INTEGER, InsId INTEGER, 
                 PRIMARY KEY(ChatId, InsId),
-                FOREIGN KEY(ChatId) REFERENCES Users(ChatId),
-                FOREIGN KEY(InsId) REFERENCES Departments(InsId));
+                FOREIGN KEY(ChatId) REFERENCES Users(ChatId) ON DELETE CASCADE,
+                FOREIGN KEY(InsId) REFERENCES Departments(InsId) ON DELETE CASCADE
+            );
+
             CREATE TABLE IF NOT EXISTS Announcements (Id INTEGER PRIMARY KEY AUTOINCREMENT, 
                 InsId INTEGER, Link TEXT UNIQUE, Title TEXT, AddedDate DATETIME,
-                FOREIGN KEY(InsId) REFERENCES Departments(InsId));
+                FOREIGN KEY(InsId) REFERENCES Departments(InsId) ON DELETE CASCADE
+            );
         ";
+
         cmd.ExecuteNonQuery();
     }
 
