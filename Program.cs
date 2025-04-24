@@ -321,7 +321,8 @@ Task HandleErrorAsync(ITelegramBotClient bot, Exception ex, CancellationToken to
 /// <param name="token">Cancellation token for the async operation</param>
 async Task PeriodicFetchAndSendAsync(ITelegramBotClient bot, CancellationToken token)
 {
-  var timer = new PeriodicTimer(TimeSpan.FromSeconds(20));
+  await FetchAndSendAsync(bot, token);
+  var timer = new PeriodicTimer(TimeSpan.FromMinutes(10));
   try
   {
     while (await timer.WaitForNextTickAsync(token))

@@ -90,8 +90,7 @@ public class ScraperService
             results.AddRange(ParseAnnouncements(rows, dept));
             firstItem += rows.Count;
 
-            // uncomment this after initial database bootstrap
-            //if(firstItem >= 10) break; // only fetch last 10 announcements
+            if (firstItem >= 10) break; // only fetch last 10 announcements
         }
         return results;
     }
