@@ -35,17 +35,14 @@ botClient.StartReceiving(
     cts.Token);
 
 var me = await botClient.GetMe(cts.Token);
-Console.WriteLine($"@{me.Username} is running... Press Enter to terminate");
+Console.WriteLine($"@{me.Username} is running... Press CTRL+C to terminate");
+
 
 // start periodic fetch of announcements
 _ = PeriodicFetchAndSendAsync(botClient, cts.Token);
 
-#if DEBUG
 await Task.Delay(Timeout.Infinite, cts.Token);
-#else
-Console.ReadLine();
 cts.Cancel();
-#endif
 
 /// <summary>
 /// Handles incoming updates from the Telegram Bot API asynchronously.
