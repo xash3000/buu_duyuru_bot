@@ -2,37 +2,26 @@
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
-using Services;
-using Models;
 using Telegram.Bot.Types.ReplyMarkups;
 using System.Globalization;
 using System.Text;
+using Services;
 
-// track pending actions ("follow" or "unfollow") per chat
-var pendingActions = new Dictionary<long, string>();
-
-var dbService = new DatabaseService();
-dbService.InitializeDatabase();
-
-// seed initial departments
-var initialDepartments = new List<Department>
-{
-    new Department { Name = "Türk Dili Bölümü", ShortName = "turkdili", Url = "https://uludag.edu.tr/turkdili/duyuru", InsId = 573 }
-};
-foreach (var d in initialDepartments)
-  await dbService.AddDepartmentAsync(d);
-// load departments from database
-var departments = await dbService.GetDepartmentsAsync();
+// TODO: refactor this file into multiple classes
 
 string apiToken = Environment.GetEnvironmentVariable("BUU_DUYURU_BOT_API_TOKEN") ?? string.Empty;
 
 var scraper = new ScraperService();
+var dbService = new DatabaseService();
+
+dbService.InitializeDatabase();
+var departments = await dbService.GetDepartmentsAsync();
 
 using var cts = new CancellationTokenSource();
 var botClient = new TelegramBotClient(apiToken);
 
-var me = await botClient.GetMe(cts.Token);
-Console.WriteLine($"@{me.Username} is running... Press Enter to terminate");
+// track pending actions ("follow" or "unfollow") per chat
+var pendingActions = new Dictionary<long, string>();
 
 var receiverOptions = new ReceiverOptions
 {
@@ -44,8 +33,13 @@ botClient.StartReceiving(
     HandleErrorAsync,
     receiverOptions,
     cts.Token);
-// start periodic fetch
+
+var me = await botClient.GetMe(cts.Token);
+Console.WriteLine($"@{me.Username} is running... Press Enter to terminate");
+
+// start periodic fetch of announcements
 _ = PeriodicFetchAndSendAsync(botClient, cts.Token);
+
 #if DEBUG
 await Task.Delay(Timeout.Infinite, cts.Token);
 #else
@@ -61,16 +55,13 @@ cts.Cancel();
 /// <param name="token">Cancellation token for the async operation</param>
 async Task HandleUpdateAsync(ITelegramBotClient bot, Update update, CancellationToken token)
 {
-  Console.WriteLine($"[Debug] Received update of type: {update.Type}");
   if (update.Message is { } message)
   {
-    Console.WriteLine($"[Debug] Received message.Text: {message.Text}");
     if (message.Text is { } text)
       await HandleTextMessageAsync(bot, message, text, token);
   }
   else if (update.CallbackQuery is { } callback)
   {
-    Console.WriteLine($"[Debug] Received callback data: {callback.Data}");
     await HandleCallbackQueryAsync(bot, callback, token);
   }
 }
@@ -84,10 +75,8 @@ async Task HandleUpdateAsync(ITelegramBotClient bot, Update update, Cancellation
 /// <param name="token">Cancellation token for the async operation</param>
 async Task HandleTextMessageAsync(ITelegramBotClient bot, Message message, string messageText, CancellationToken token)
 {
-  Console.WriteLine($"[Debug] Handling message: {messageText} from chat {message.Chat.Id}");
   var parts = messageText.Trim().Split(' ', 2, StringSplitOptions.TrimEntries);
   var cmd = parts[0].Split('@')[0].ToLower();
-  // interactive flow
   if (pendingActions.TryGetValue(message.Chat.Id, out var pending) && !messageText.StartsWith("/"))
   {
     await HandlePendingActionAsync(bot, message, messageText, token);
@@ -154,7 +143,6 @@ async Task HandleSubscribeAsync(ITelegramBotClient bot, Message message, Cancell
 /// <param name="token">Cancellation token for the async operation</param>
 async Task HandleUnsubscribeAsync(ITelegramBotClient bot, Message message, CancellationToken token)
 {
-  // Fetch current user subscriptions and show choices directly
   var subsShortNames = await dbService.GetUserSubscriptionsAsync(message.Chat.Id);
   if (!subsShortNames.Any())
   {
@@ -165,7 +153,6 @@ async Task HandleUnsubscribeAsync(ITelegramBotClient bot, Message message, Cance
   else
   {
     var subsDepts = departments.Where(d => subsShortNames.Contains(d.ShortName)).ToList();
-    // Create one button per row for full width
     var rows = new List<InlineKeyboardButton[]>();
     foreach (var dept in subsDepts)
     {
@@ -175,7 +162,6 @@ async Task HandleUnsubscribeAsync(ITelegramBotClient bot, Message message, Cance
           callbackData: $"unfollow:{dept.InsId}")
       });
     }
-    // Add cancel button on its own row
     rows.Add(new[] {
       InlineKeyboardButton.WithCallbackData(
         text: "iptal",
@@ -195,7 +181,6 @@ async Task HandleUnsubscribeAsync(ITelegramBotClient bot, Message message, Cance
 /// </summary>
 async Task HandlePendingActionAsync(ITelegramBotClient bot, Message message, string query, CancellationToken token)
 {
-  // allow user to cancel pending operation
   if (NormalizeText(query) == "iptal")
   {
     pendingActions.Remove(message.Chat.Id);
@@ -204,9 +189,7 @@ async Task HandlePendingActionAsync(ITelegramBotClient bot, Message message, str
     return;
   }
   var action = pendingActions[message.Chat.Id];
-  // normalize query
   string norm = NormalizeText(query);
-  // choose source list
   var list = action == "follow" ? departments : (await dbService.GetUserSubscriptionsAsync(message.Chat.Id)
                 .ContinueWith(t => departments.Where(d => t.Result.Contains(d.ShortName)).ToList()));
   var matches = list.Where(d => NormalizeText(d.Name).Contains(norm)
@@ -218,7 +201,6 @@ async Task HandlePendingActionAsync(ITelegramBotClient bot, Message message, str
     return;
   }
 
-  // Create one button per row for full width
   var rows = new List<InlineKeyboardButton[]>();
   foreach (var dept in matches)
   {
@@ -228,7 +210,6 @@ async Task HandlePendingActionAsync(ITelegramBotClient bot, Message message, str
         callbackData: $"{action}:{dept.InsId}")
     });
   }
-  // Add cancel button on its own row
   rows.Add(new[] {
     InlineKeyboardButton.WithCallbackData(
       text: "iptal",
@@ -246,7 +227,6 @@ async Task HandlePendingActionAsync(ITelegramBotClient bot, Message message, str
 /// </summary>
 async Task HandleCallbackQueryAsync(ITelegramBotClient bot, CallbackQuery callback, CancellationToken token)
 {
-  // ensure data and message are present
   if (callback.Data == null || callback.Message == null)
   {
     await bot.AnswerCallbackQuery(callback.Id, cancellationToken: token);
@@ -254,7 +234,6 @@ async Task HandleCallbackQueryAsync(ITelegramBotClient bot, CallbackQuery callba
   }
   var targetChatId = callback.Message.Chat.Id;
   var messageId = callback.Message.MessageId;
-  // handle cancel button
   if (callback.Data == "cancel")
   {
     await bot.EditMessageText(targetChatId, messageId,
@@ -262,7 +241,6 @@ async Task HandleCallbackQueryAsync(ITelegramBotClient bot, CallbackQuery callba
     await bot.AnswerCallbackQuery(callback.Id, cancellationToken: token);
     return;
   }
-  // parse action and insId
   var parts = callback.Data.Split(':', 2);
   if (parts.Length != 2 || !int.TryParse(parts[1], out var insId))
   {
@@ -277,7 +255,7 @@ async Task HandleCallbackQueryAsync(ITelegramBotClient bot, CallbackQuery callba
     response = await (dbService.AddSubscriptionAsync(targetChatId, insId, user.Username, GetUserFullName(user))
       .ContinueWith(t => t.Result ? "Takip edildi." : "Zaten takip ediyorsunuz."));
   }
-  else // unfollow
+  else
   {
     response = await dbService.RemoveSubscriptionAsync(targetChatId, insId)
       .ContinueWith(t => t.Result ? "Takipten çıkıldı." : "Zaten takip etmiyorsunuz.");
@@ -317,7 +295,6 @@ async Task HandleMyAsync(ITelegramBotClient bot, Message message, CancellationTo
     return;
   }
 
-  // Get full department names by matching short names with departments list
   var subsDepts = departments.Where(d => subsShortNames.Contains(d.ShortName)).ToList();
   var deptNames = subsDepts.Select(d => d.Name).ToList();
 
