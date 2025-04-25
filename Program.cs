@@ -310,8 +310,22 @@ string NormalizeText(string text)
 /// <param name="token">Cancellation token for the async operation</param>
 async Task HandleMyAsync(ITelegramBotClient bot, Message message, CancellationToken token)
 {
-  var subs = await dbService.GetUserSubscriptionsAsync(message.Chat.Id);
-  await bot.SendMessage(message.Chat.Id, subs.Any() ? string.Join(", ", subs) : "Takip ettiğiniz bölüm bulunmuyor.", cancellationToken: token);
+  var subsShortNames = await dbService.GetUserSubscriptionsAsync(message.Chat.Id);
+  if (!subsShortNames.Any())
+  {
+    await bot.SendMessage(message.Chat.Id, "Takip ettiğiniz bölüm bulunmuyor.", cancellationToken: token);
+    return;
+  }
+
+  // Get full department names by matching short names with departments list
+  var subsDepts = departments.Where(d => subsShortNames.Contains(d.ShortName)).ToList();
+  var deptNames = subsDepts.Select(d => d.Name).ToList();
+
+  await bot.SendMessage(
+    message.Chat.Id,
+    $"Takip ettiğiniz bölümler:\n\n{string.Join("\n", deptNames)}",
+    cancellationToken: token
+  );
 }
 
 /// <summary>
