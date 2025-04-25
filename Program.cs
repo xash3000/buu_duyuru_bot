@@ -165,12 +165,24 @@ async Task HandleUnsubscribeAsync(ITelegramBotClient bot, Message message, Cance
   else
   {
     var subsDepts = departments.Where(d => subsShortNames.Contains(d.ShortName)).ToList();
-    var buttonList = subsDepts.Select(d => InlineKeyboardButton.WithCallbackData(
-        text: d.Name,
-        callbackData: $"unfollow:{d.InsId}"));
-    var cancelButton = InlineKeyboardButton.WithCallbackData(text: "iptal", callbackData: "cancel");
-    var buttons = buttonList.Concat(new[] { cancelButton });
-    var markup = new InlineKeyboardMarkup(buttons);
+    // Create one button per row for full width
+    var rows = new List<InlineKeyboardButton[]>();
+    foreach (var dept in subsDepts)
+    {
+      rows.Add(new[] {
+        InlineKeyboardButton.WithCallbackData(
+          text: dept.Name,
+          callbackData: $"unfollow:{dept.InsId}")
+      });
+    }
+    // Add cancel button on its own row
+    rows.Add(new[] {
+      InlineKeyboardButton.WithCallbackData(
+        text: "iptal",
+        callbackData: "cancel")
+    });
+
+    var markup = new InlineKeyboardMarkup(rows);
     await bot.SendMessage(message.Chat.Id,
         "Lütfen takipten çıkmak istediğiniz bölümü seçin:",
         replyMarkup: markup,
@@ -205,14 +217,25 @@ async Task HandlePendingActionAsync(ITelegramBotClient bot, Message message, str
         "Bölüm bulunamadı. Lütfen tekrar deneyin:", cancellationToken: token);
     return;
   }
-  // build buttons with cancel option
-  var buttonList = matches.Select(d => InlineKeyboardButton.WithCallbackData(
-      text: d.Name,
-      callbackData: $"{action}:{d.InsId}"));
-  // add cancel button
-  var cancelButton = InlineKeyboardButton.WithCallbackData(text: "iptal", callbackData: "cancel");
-  var buttons = buttonList.Concat(new[] { cancelButton });
-  var markup = new InlineKeyboardMarkup(buttons);
+
+  // Create one button per row for full width
+  var rows = new List<InlineKeyboardButton[]>();
+  foreach (var dept in matches)
+  {
+    rows.Add(new[] {
+      InlineKeyboardButton.WithCallbackData(
+        text: dept.Name,
+        callbackData: $"{action}:{dept.InsId}")
+    });
+  }
+  // Add cancel button on its own row
+  rows.Add(new[] {
+    InlineKeyboardButton.WithCallbackData(
+      text: "iptal",
+      callbackData: "cancel")
+  });
+
+  var markup = new InlineKeyboardMarkup(rows);
   await bot.SendMessage(message.Chat.Id,
       "Lütfen bir bölüm seçin:", replyMarkup: markup, cancellationToken: token);
   pendingActions.Remove(message.Chat.Id);
