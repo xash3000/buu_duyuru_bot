@@ -10,33 +10,36 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
 
       - name: Restore & Publish
         run: |
           dotnet restore
-          dotnet publish -c Release -o publish
+          dotnet publish --configuration Release --output ./publish
 
-      - name: Sync build to Droplet
-        uses: burnett01/rsync-deployments@v4
+      - name: Deploy to Droplet via rsync
+        uses: easingthemes/ssh-deploy@v5.1.0
         with:
-          switches: -avz --delete --exclude '*.db'
-          path: publish/
-          remote_host: ${{ secrets.SSH_HOST }}
-          remote_user: ${{ secrets.SSH_USER }}
-          remote_key: ${{ secrets.SSH_KEY }}
-          remote_path: /home/${{ secrets.SSH_USER }}/buu_duyuru_bot
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
+          ARGS: "-avz --delete --exclude='*.db'"
+          SOURCE: "publish/"
+          REMOTE_HOST: ${{ secrets.SSH_HOST }}
+          REMOTE_USER: ${{ secrets.SSH_USER }}
+          TARGET: "/home/${{ secrets.SSH_USER }}/buu_duyuru_bot"
+          EXCLUDE: ".git*"
 
       - name: Restart service on Droplet
-        uses: appleboy/ssh-action@v0.1.6
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           script: |
+            echo "Attempting to restart service..."
             sudo systemctl restart buu_duyuru_bot.service
+            echo "Service restart command executed."
