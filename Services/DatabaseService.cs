@@ -4,8 +4,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Models;
+using Services.Interfaces;
 
-public class DatabaseService
+public class DatabaseService : IDatabaseService
 {
     private const string DbPath = "buu_duyuru_bot.db";
 

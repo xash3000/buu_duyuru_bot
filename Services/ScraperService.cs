@@ -8,8 +8,9 @@ using Models;
 using System.Globalization;
 using System.Net;
 using System.Threading;
+using Services.Interfaces;
 
-public class ScraperService
+public class ScraperService : IScraperService
 {
     private static readonly HttpClient _httpClient;
     private static readonly SemaphoreSlim _throttle = new SemaphoreSlim(1, 1);
