@@ -59,7 +59,7 @@ namespace Services
         private async Task HandleHelpAsync(ITelegramBotClient bot, Message message, CancellationToken token)
         {
             await bot.SendMessage(message.Chat.Id,
-                "/follow - bölümleri takip et\n" +
+                "/follow - birimleri takip et\n" +
                 "/unfollow - takipten çık\n" +
                 "/my - takiplerini göster\n",
                 cancellationToken: token);
@@ -71,7 +71,12 @@ namespace Services
         private async Task HandleSubscribeAsync(ITelegramBotClient bot, Message message, CancellationToken token)
         {
             await bot.SendMessage(message.Chat.Id,
-                "Lütfen takip etmek istediğiniz bölümü yazın (veya 'iptal' yazarak iptal edin):",
+                "Lütfen takip etmek istediğiniz birimi yazın (veya 'iptal' yazarak iptal edin):\n" +
+                "Fakülteler ve bölümler olmak üzere tüm akademik ve idari birimleri takip edebilirsiniz\n" +
+                "Örnekler:\n" +
+                "- Eğitim Fakültesi\n" +
+                "- Kimya Bölümü\n" +
+                "- Öğrenci İşleri Daire Başkanlığı",
                 cancellationToken: token);
             _pendingActions[message.Chat.Id] = "follow";
         }
@@ -108,7 +113,7 @@ namespace Services
 
                 var markup = new InlineKeyboardMarkup(rows);
                 await bot.SendMessage(message.Chat.Id,
-                    "Lütfen takipten çıkmak istediğiniz bölümü seçin:",
+                    "Lütfen takipten çıkmak istediğiniz birimi seçin:",
                     replyMarkup: markup,
                     cancellationToken: token);
             }
@@ -152,7 +157,7 @@ namespace Services
             if (!matches.Any())
             {
                 await bot.SendMessage(message.Chat.Id,
-                    "Bölüm bulunamadı. Lütfen tekrar deneyin (veya 'iptal' yazın):", cancellationToken: token);
+                    "birim bulunamadı. Lütfen tekrar deneyin (veya 'iptal' yazın):", cancellationToken: token);
                 return;
             }
 
@@ -173,7 +178,7 @@ namespace Services
 
             var markup = new InlineKeyboardMarkup(rows);
             await bot.SendMessage(message.Chat.Id,
-                "Lütfen bir bölüm seçin:", replyMarkup: markup, cancellationToken: token);
+                "Lütfen bir birim seçin:", replyMarkup: markup, cancellationToken: token);
 
             _pendingActions.Remove(message.Chat.Id);
         }
@@ -187,7 +192,7 @@ namespace Services
             var subsShortNames = await _dbService.GetUserSubscriptionsAsync(message.Chat.Id);
             if (!subsShortNames.Any())
             {
-                await bot.SendMessage(message.Chat.Id, "Takip ettiğiniz bölüm bulunmuyor.", cancellationToken: token);
+                await bot.SendMessage(message.Chat.Id, "Takip ettiğiniz birim bulunmuyor.", cancellationToken: token);
                 return;
             }
 
@@ -196,7 +201,7 @@ namespace Services
 
             await bot.SendMessage(
                 message.Chat.Id,
-                $"Takip ettiğiniz bölümler:\n\n{string.Join("\n", deptNames)}",
+                $"Takip ettiğiniz birimler:\n\n{string.Join("\n", deptNames)}",
                 cancellationToken: token
             );
         }
