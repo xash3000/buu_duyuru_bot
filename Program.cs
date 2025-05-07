@@ -13,27 +13,10 @@ if (string.IsNullOrEmpty(apiToken))
 var serviceProvider = new ServiceCollection()
     .AddSingleton<IDatabaseService, DatabaseService>()
     .AddSingleton<IScraperService, ScraperService>()
-    .AddSingleton<ICommandHandler>(sp =>
-    {
-      var dbService = sp.GetRequiredService<IDatabaseService>();
-      var departments = Task.Run(() => dbService.GetDepartmentsAsync()).GetAwaiter().GetResult();
-      return new CommandHandler(dbService, departments);
-    })
+    .AddSingleton<ICommandHandler, CommandHandler>()
     .AddSingleton<ICallbackHandler, CallbackHandler>()
-    .AddSingleton<IBotService>(sp =>
-    {
-      var commandHandler = sp.GetRequiredService<ICommandHandler>();
-      var callbackHandler = sp.GetRequiredService<ICallbackHandler>();
-      return new BotService(apiToken, commandHandler, callbackHandler);
-    })
-    .AddSingleton<IPeriodicFetchService>(sp =>
-    {
-      var botService = sp.GetRequiredService<IBotService>();
-      var scraperService = sp.GetRequiredService<IScraperService>();
-      var dbService = sp.GetRequiredService<IDatabaseService>();
-      var departments = Task.Run(() => dbService.GetDepartmentsAsync()).GetAwaiter().GetResult();
-      return new PeriodicFetchService(botService, scraperService, dbService, departments);
-    })
+    .AddSingleton<IBotService, BotService>(sp => new BotService(apiToken, sp.GetRequiredService<ICommandHandler>(), sp.GetRequiredService<ICallbackHandler>()))
+    .AddSingleton<IPeriodicFetchService, PeriodicFetchService>()
     .AddSingleton<List<Department>>(sp =>
     {
       var dbService = sp.GetRequiredService<IDatabaseService>();
