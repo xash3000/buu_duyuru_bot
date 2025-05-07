@@ -183,15 +183,26 @@ namespace Services
 
         private List<Department> MatchSearch(string term, List<Department> departments)
         {
-            return departments.Where(d =>
-                IsFuzzyMatch(NormalizeText(d.Name), term) ||
-                IsFuzzyMatch(NormalizeText(d.ShortName), term)).ToList();
+            var matches = departments.Select(d => new
+            {
+                Department = d,
+                MatchScore = CalculateMatchScore(NormalizeText(d.Name), term) + CalculateMatchScore(NormalizeText(d.ShortName), term)
+            })
+            .Where(x => x.MatchScore > 0)
+            .OrderByDescending(x => x.MatchScore)
+            .Take(5)
+            .Select(x => x.Department)
+            .ToList();
+
+            return matches;
         }
 
-        private bool IsFuzzyMatch(string source, string target)
+        private int CalculateMatchScore(string source, string target)
         {
             var sourceWords = source.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             var targetWords = target.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            int score = 0;
 
             foreach (var sourceWord in sourceWords)
             {
@@ -200,12 +211,12 @@ namespace Services
                     int maxDistance = Math.Min(2, targetWord.Length / 2);
                     if (LevenshteinDistance(sourceWord, targetWord) <= maxDistance)
                     {
-                        return true;
+                        score++;
                     }
                 }
             }
 
-            return false;
+            return score;
         }
 
         private int LevenshteinDistance(string source, string target)
