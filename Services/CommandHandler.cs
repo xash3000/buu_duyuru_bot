@@ -59,7 +59,7 @@ namespace Services
         private async Task HandleHelpAsync(ITelegramBotClient bot, Message message, CancellationToken token)
         {
             await bot.SendMessage(message.Chat.Id,
-                "/follow - bölümleri takip et\n" +
+                "/follow - birimleri takip et\n" +
                 "/unfollow - takipten çık\n" +
                 "/my - takiplerini göster\n",
                 cancellationToken: token);
@@ -71,7 +71,12 @@ namespace Services
         private async Task HandleSubscribeAsync(ITelegramBotClient bot, Message message, CancellationToken token)
         {
             await bot.SendMessage(message.Chat.Id,
-                "Lütfen takip etmek istediğiniz bölümü yazın (veya 'iptal' yazarak iptal edin):",
+                "Lütfen takip etmek istediğiniz birimi yazın (veya 'iptal' yazarak iptal edin):\n" +
+                "Fakülteler ve bölümler olmak üzere tüm akademik ve idari birimleri takip edebilirsiniz\n" +
+                "Örnekler:\n" +
+                "- Eğitim Fakültesi\n" +
+                "- Kimya Bölümü\n" +
+                "- Öğrenci İşleri Daire Başkanlığı",
                 cancellationToken: token);
             _pendingActions[message.Chat.Id] = "follow";
         }
@@ -108,7 +113,7 @@ namespace Services
 
                 var markup = new InlineKeyboardMarkup(rows);
                 await bot.SendMessage(message.Chat.Id,
-                    "Lütfen takipten çıkmak istediğiniz bölümü seçin:",
+                    "Lütfen takipten çıkmak istediğiniz birimi seçin:",
                     replyMarkup: markup,
                     cancellationToken: token);
             }
@@ -146,13 +151,11 @@ namespace Services
                 list = _departments.Where(d => userSubs.Contains(d.ShortName)).ToList();
             }
 
-
-            var matches = list.Where(d => NormalizeText(d.Name).Contains(norm)
-                                    || NormalizeText(d.ShortName).Contains(norm)).ToList();
+            var matches = MatchSearch(norm, list);
             if (!matches.Any())
             {
                 await bot.SendMessage(message.Chat.Id,
-                    "Bölüm bulunamadı. Lütfen tekrar deneyin (veya 'iptal' yazın):", cancellationToken: token);
+                    "birim bulunamadı. Lütfen tekrar deneyin (veya 'iptal' yazın):", cancellationToken: token);
                 return;
             }
 
@@ -173,11 +176,62 @@ namespace Services
 
             var markup = new InlineKeyboardMarkup(rows);
             await bot.SendMessage(message.Chat.Id,
-                "Lütfen bir bölüm seçin:", replyMarkup: markup, cancellationToken: token);
+                "Lütfen bir birim seçin:", replyMarkup: markup, cancellationToken: token);
 
             _pendingActions.Remove(message.Chat.Id);
         }
 
+        private List<Department> MatchSearch(string term, List<Department> departments)
+        {
+            return departments.Where(d =>
+                IsFuzzyMatch(NormalizeText(d.Name), term) ||
+                IsFuzzyMatch(NormalizeText(d.ShortName), term)).ToList();
+        }
+
+        private bool IsFuzzyMatch(string source, string target)
+        {
+            var sourceWords = source.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var targetWords = target.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var sourceWord in sourceWords)
+            {
+                foreach (var targetWord in targetWords)
+                {
+                    int maxDistance = Math.Min(2, targetWord.Length / 2);
+                    if (LevenshteinDistance(sourceWord, targetWord) <= maxDistance)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private int LevenshteinDistance(string source, string target)
+        {
+            if (string.IsNullOrEmpty(source)) return target.Length;
+            if (string.IsNullOrEmpty(target)) return source.Length;
+
+            int[,] dp = new int[source.Length + 1, target.Length + 1];
+
+            for (int i = 0; i <= source.Length; i++) dp[i, 0] = i;
+            for (int j = 0; j <= target.Length; j++) dp[0, j] = j;
+
+            for (int i = 1; i <= source.Length; i++)
+            {
+                for (int j = 1; j <= target.Length; j++)
+                {
+                    int cost = source[i - 1] == target[j - 1] ? 0 : 1;
+                    dp[i, j] = Math.Min(
+                        Math.Min(dp[i - 1, j] + 1, dp[i, j - 1] + 1),
+                        dp[i - 1, j - 1] + cost
+                    );
+                }
+            }
+
+            return dp[source.Length, target.Length];
+        }
 
         /// <summary>
         /// Handles the /my command asynchronously.
@@ -187,7 +241,7 @@ namespace Services
             var subsShortNames = await _dbService.GetUserSubscriptionsAsync(message.Chat.Id);
             if (!subsShortNames.Any())
             {
-                await bot.SendMessage(message.Chat.Id, "Takip ettiğiniz bölüm bulunmuyor.", cancellationToken: token);
+                await bot.SendMessage(message.Chat.Id, "Takip ettiğiniz birim bulunmuyor.", cancellationToken: token);
                 return;
             }
 
@@ -196,7 +250,7 @@ namespace Services
 
             await bot.SendMessage(
                 message.Chat.Id,
-                $"Takip ettiğiniz bölümler:\n\n{string.Join("\n", deptNames)}",
+                $"Takip ettiğiniz birimler:\n\n{string.Join("\n", deptNames)}",
                 cancellationToken: token
             );
         }
