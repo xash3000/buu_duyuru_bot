@@ -3,6 +3,8 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types;
 using Models;
 using Services.Interfaces;
+using System.Collections.Concurrent;
+using System.Threading;
 
 namespace Services
 {
@@ -16,6 +18,11 @@ namespace Services
         private PeriodicTimer? _timer;
         private Task? _timerTask;
         private readonly CancellationTokenSource _cts = new();
+        // Rate limiting: global and per-chat
+        private readonly SemaphoreSlim _globalSemaphore = new SemaphoreSlim(30, 30); // 30 messages per second
+        private Timer? _refillTimer;
+        private readonly ConcurrentDictionary<long, DateTime> _lastSent = new();
+        private readonly ConcurrentDictionary<long, SemaphoreSlim> _perChatLocks = new();
 
         public PeriodicFetchService(IBotService botService, IScraperService scraperService, IDatabaseService dbService, List<Department> departments) // Inject interfaces
         {
@@ -37,6 +44,8 @@ namespace Services
             }
 
             _timer = new PeriodicTimer(_fetchInterval);
+            // start a timer to refill the global semaphore every second
+            _refillTimer = new Timer(RefillGlobalTokens, null, 1000, 1000);
             _timerTask = RunPeriodicFetchAsync(_cts.Token);
             Console.WriteLine($"Periodic fetch service started. Interval: {_fetchInterval.TotalMinutes} minutes.");
         }
@@ -50,6 +59,7 @@ namespace Services
 
             _cts.Cancel();
             _timer?.Dispose();
+            _refillTimer?.Dispose();
             try
             {
                 await _timerTask;
@@ -130,23 +140,56 @@ namespace Services
                         foreach (var chatId in subs)
                         {
                             if (token.IsCancellationRequested) break;
+
+                            var perChatLock = _perChatLocks.GetOrAdd(chatId, _ => new SemaphoreSlim(1, 1));
                             try
                             {
-                                await botClient.SendMessage(
-                                    chatId: chatId,
-                                    text: "📢 Duyuru\n\n" +
-                                          $"👤 Kimden: {department.Name}\n" +
-                                          $"📅 Tarih: {ann.AddedDate:dd.MM.yyyy}\n\n" +
-                                          "🗒 Konu:\n" +
-                                          $"> {ann.Title}\n\n" +
-                                          $"🔗 {ann.Link}",
-                                    linkPreviewOptions: new LinkPreviewOptions { IsDisabled = true },
-                                    cancellationToken: token
-                                );
+                                await perChatLock.WaitAsync(token);
+
+                                // Enforce 1 message per second per chat
+                                if (_lastSent.TryGetValue(chatId, out var lastSent))
+                                {
+                                    var since = DateTime.UtcNow - lastSent;
+                                    if (since < TimeSpan.FromSeconds(1))
+                                    {
+                                        var wait = TimeSpan.FromSeconds(1) - since;
+                                        await Task.Delay(wait, token);
+                                    }
+                                }
+
+                                // Enforce global 30 messages per second
+                                await _globalSemaphore.WaitAsync(token);
+                                try
+                                {
+                                    try
+                                    {
+                                        await botClient.SendMessage(
+                                            chatId: chatId,
+                                            text: "📢 Duyuru\n\n" +
+                                                  $"👤 Kimden: {department.Name}\n" +
+                                                  $"📅 Tarih: {ann.AddedDate:dd.MM.yyyy}\n\n" +
+                                                  "🗒 Konu:\n" +
+                                                  $"> {ann.Title}\n\n" +
+                                                  $"🔗 {ann.Link}",
+                                            linkPreviewOptions: new LinkPreviewOptions { IsDisabled = true },
+                                            cancellationToken: token
+                                        );
+
+                                        _lastSent[chatId] = DateTime.UtcNow;
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.WriteLine($"Error sending announcement {ann.Link} to chat {chatId}: {ex.Message}");
+                                    }
+                                }
+                                finally
+                                {
+                                    // Do not release the global semaphore here; tokens are refilled on a timer
+                                }
                             }
-                            catch (Exception ex)
+                            finally
                             {
-                                Console.WriteLine($"Error sending announcement {ann.Link} to chat {chatId}: {ex.Message}");
+                                perChatLock.Release();
                             }
                         }
                     }
@@ -159,6 +202,27 @@ namespace Services
             catch (Exception ex)
             {
                 Console.WriteLine($"Error during FetchAndSendAsync: {ex}");
+            }
+        }
+
+        private void RefillGlobalTokens(object? state)
+        {
+            try
+            {
+                // Refill up to 30 tokens per second
+                var toRelease = 30 - _globalSemaphore.CurrentCount;
+                if (toRelease > 0)
+                {
+                    _globalSemaphore.Release(toRelease);
+                }
+            }
+            catch (SemaphoreFullException)
+            {
+                // already full
+            }
+            catch
+            {
+                // ignore other timer exceptions
             }
         }
     }
