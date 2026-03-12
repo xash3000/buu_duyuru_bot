@@ -64,7 +64,7 @@ namespace Services
                 {
                     var user = callback.From;
                     success = await _dbService.AddSubscriptionAsync(targetChatId, insId, user.Username, CommandHandler.GetUserFullName(user));
-                    responseText = success ? "Takip edildi." : "Zaten takip ediyorsunuz.";
+                    responseText = success ? "Takip edildi." : "Zaten birimi takip ediyorsunuz.";
                 }
                 else if (action == "unfollow")
                 {
