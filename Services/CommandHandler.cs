@@ -59,9 +59,9 @@ namespace Services
         private async Task HandleHelpAsync(ITelegramBotClient bot, Message message, CancellationToken token)
         {
             await bot.SendMessage(message.Chat.Id,
-                "/follow - birimleri takip et\n" +
-                "/unfollow - takipten çık\n" +
-                "/my - takiplerini göster\n",
+                "/follow - birimleri takip edin\n" +
+                "/unfollow - takipten çıkın\n" +
+                "/my - takiplerinizi gösterin\n",
                 cancellationToken: token);
         }
 
@@ -71,7 +71,7 @@ namespace Services
         private async Task HandleSubscribeAsync(ITelegramBotClient bot, Message message, CancellationToken token)
         {
             await bot.SendMessage(message.Chat.Id,
-                "Lütfen takip etmek istediğiniz birimi yazın (veya 'iptal' yazarak iptal edin):\n" +
+                "Takip etmek istediğiniz birimi yazın (veya 'iptal' yazarak işlemi iptal edin):\n" +
                 "Fakülteler ve bölümler olmak üzere tüm akademik ve idari birimleri takip edebilirsiniz\n" +
                 "Örnekler:\n" +
                 "- Eğitim Fakültesi\n" +
@@ -113,7 +113,7 @@ namespace Services
 
                 var markup = new InlineKeyboardMarkup(rows);
                 await bot.SendMessage(message.Chat.Id,
-                    "Lütfen takipten çıkmak istediğiniz birimi seçin:",
+                    "Takipten çıkmak istediğiniz birimi seçin:",
                     replyMarkup: markup,
                     cancellationToken: token);
             }
@@ -155,7 +155,7 @@ namespace Services
             if (!matches.Any())
             {
                 await bot.SendMessage(message.Chat.Id,
-                    "birim bulunamadı. Lütfen tekrar deneyin (veya 'iptal' yazın):", cancellationToken: token);
+                    "birim bulunamadı. Lütfen tekrar deneyin (veya 'iptal' yazarak işlemi iptal edin):", cancellationToken: token);
                 return;
             }
 
@@ -176,7 +176,7 @@ namespace Services
 
             var markup = new InlineKeyboardMarkup(rows);
             await bot.SendMessage(message.Chat.Id,
-                "Lütfen bir birim seçin:", replyMarkup: markup, cancellationToken: token);
+                "Bir birim seçin:", replyMarkup: markup, cancellationToken: token);
 
             _pendingActions.Remove(message.Chat.Id);
         }
