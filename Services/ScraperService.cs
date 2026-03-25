@@ -1,4 +1,5 @@
 namespace Services;
+
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
@@ -57,9 +58,9 @@ public class ScraperService : IScraperService
                 var deptAnnouncements = await FetchAnnouncementsForDepartmentAsync(_httpClient, dept);
                 announcements.AddRange(deptAnnouncements);
             }
-            catch
+            catch (Exception ex)
             {
-                // ignore errors per department
+                Console.WriteLine($"[Scraper] Error fetching announcements for {dept.ShortName}: {ex.Message}");
             }
             finally
             {
@@ -151,15 +152,37 @@ public class ScraperService : IScraperService
     /// <param name="httpClient">The HTTP client to use for the request</param>
     /// <param name="request">The HTTP request message to send</param>
     /// <returns>A collection of HTML nodes representing table rows</returns>
-    private async Task<HtmlNodeCollection> FetchRowsAsync(
+    private async Task<HtmlNodeCollection?> FetchRowsAsync(
         HttpClient httpClient,
         HttpRequestMessage request)
     {
-        var response = await httpClient.SendAsync(request);
+        using var response = await httpClient.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            Console.WriteLine($"[Scraper] HTTP Error: {response.StatusCode} for {request.RequestUri}");
+            return null;
+        }
+
         var html = await response.Content.ReadAsStringAsync();
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            Console.WriteLine($"[Scraper] Empty response for {request.RequestUri}");
+            return null;
+        }
+
         var doc = new HtmlDocument();
         doc.LoadHtml(html);
-        return doc.DocumentNode.SelectNodes("//tr");
+        var nodes = doc.DocumentNode.SelectNodes("//tr");
+
+        if (nodes == null || nodes.Count == 0)
+        {
+            if (html.Contains("Cloudflare") || html.Contains("Captcha") || html.Contains("Access Denied"))
+            {
+                Console.WriteLine($"[Scraper] Potential block detected for {request.RequestUri}. Content length: {html.Length}. Markers found.");
+            }
+        }
+
+        return nodes;
     }
 
     /// <summary>

@@ -14,7 +14,7 @@ namespace Services
         private readonly IScraperService _scraperService;
         private readonly IDatabaseService _dbService;
         private readonly List<Department> _departments;
-        private readonly TimeSpan _fetchInterval = TimeSpan.FromMinutes(10);
+        private readonly TimeSpan _fetchInterval = TimeSpan.FromMinutes(5);
         private PeriodicTimer? _timer;
         private Task? _timerTask;
         private readonly CancellationTokenSource _cts = new();
