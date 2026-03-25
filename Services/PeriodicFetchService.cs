@@ -123,6 +123,12 @@ namespace Services
                 {
                     if (token.IsCancellationRequested) break;
 
+                    // TODO: remove debug code
+                    if (ann.InsId == 126)
+                    {
+                        Console.WriteLine(ann.Title);
+                    }
+
                     if (!await _dbService.AnnouncementExistsAsync(ann.Link))
                     {
                         newAnnouncementsCount++;
